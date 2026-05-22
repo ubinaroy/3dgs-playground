@@ -1,0 +1,1414 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3D Gaussian Splatting — 代码导读</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --text-muted: #8b949e;
+    --accent: #58a6ff;
+    --accent2: #f0883e;
+    --code-bg: #0d1117;
+    --highlight: #1f6feb33;
+    --green: #3fb950;
+    --red: #f85149;
+    --yellow: #d2991d;
+    --purple: #a371f7;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+  }
+
+  nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 8px 24px; display: flex; gap: 16px; align-items: center;
+    flex-wrap: wrap;
+  }
+  nav a { color: var(--accent); text-decoration: none; font-size: 13px; }
+  nav a:hover { text-decoration: underline; }
+  nav .sep { color: var(--border); }
+
+  .container { max-width: 1420px; margin: 0 auto; padding: 60px 20px 40px; }
+
+  header {
+    text-align: center; padding: 40px 20px 30px;
+    border-bottom: 1px solid var(--border); margin-bottom: 32px;
+  }
+  header h1 { font-size: 28px; color: #fff; }
+  header p  { color: var(--text-muted); margin-top: 6px; font-size: 15px; }
+  .badge {
+    display: inline-block; padding: 2px 10px; border-radius: 12px;
+    font-size: 12px; margin: 3px; font-weight: 600;
+  }
+  .badge-py { background: #30699820; color: #ffd43b; border: 1px solid #ffd43b40; }
+  .badge-cu { background: #3fb95020; color: #3fb950; border: 1px solid #3fb95040; }
+  .badge-core { background: #f0883e20; color: #f0883e; border: 1px solid #f0883e40; }
+
+  .pipeline {
+    display: flex; flex-wrap: wrap; gap: 12px; justify-content: center;
+    margin: 28px 0;
+  }
+  .pipe-step {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 18px; text-align: center;
+    min-width: 120px; transition: 0.2s;
+  }
+  .pipe-step:hover { border-color: var(--accent); }
+  .pipe-step .num { font-size: 22px; font-weight: 700; color: var(--accent); }
+  .pipe-step .label { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+  .pipe-arrow { font-size: 20px; color: var(--text-muted); align-self: center; }
+
+  section { margin-bottom: 48px; }
+  .section-title {
+    font-size: 22px; color: #fff; padding-bottom: 6px;
+    border-bottom: 2px solid var(--accent); margin-bottom: 16px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .section-title .file { font-size: 14px; color: var(--text-muted); font-weight: 400; }
+
+  .split {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+    margin-bottom: 18px; border: 1px solid var(--border); border-radius: 10px;
+    overflow: hidden;
+  }
+  .split .left, .split .right {
+    padding: 16px; overflow-x: auto;
+  }
+  .split .left  { background: #0d1117; }
+  .split .right { background: var(--surface); }
+
+  pre { font-family: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'Consolas', monospace; font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; word-break: break-all; }
+  .left pre { color: #c9d1d9; }
+  .comment { color: #8b949e; font-style: italic; }
+  .kw  { color: #ff7b72; }
+  .fn  { color: #d2a8ff; }
+  .str { color: #a5d6ff; }
+  .num { color: #79c0ff; }
+
+  .right h4 { color: var(--accent); font-size: 15px; margin-bottom: 8px; }
+  .right p  { color: var(--text-muted); font-size: 14px; margin-bottom: 10px; }
+  .right ul, .right ol { margin-left: 18px; color: var(--text-muted); font-size: 13.5px; }
+  .right ul li, .right ol li { margin-bottom: 5px; }
+  .right .highlight { color: var(--accent2); font-weight: 600; }
+  .right .math { color: var(--purple); }
+  .formula { text-align: center; margin: 16px 0; color: var(--purple); }
+
+  .func-cards { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
+  .func-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 14px 18px; flex: 1 1 280px;
+    transition: 0.2s;
+  }
+  .func-card:hover { border-color: var(--accent); }
+  .func-card .name { color: #d2a8ff; font-family: monospace; font-size: 14px; font-weight: 600; }
+  .func-card .desc { color: var(--text-muted); font-size: 13px; margin-top: 6px; }
+  .func-card .tag  { font-size: 11px; padding: 1px 7px; border-radius: 4px; margin-right: 4px; }
+  .tag-core  { background: #f0883e18; color: #f0883e; }
+  .tag-loss  { background: #f8514918; color: #f85149; }
+  .tag-util  { background: #3fb95018; color: #3fb950; }
+  .tag-render{ background: #a371f718; color: #a371f7; }
+
+  .callout {
+    background: #1f6feb11; border-left: 3px solid var(--accent);
+    padding: 12px 18px; border-radius: 0 8px 8px 0; margin: 14px 0;
+    font-size: 13.5px; color: var(--text-muted);
+  }
+
+  .toc {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 20px 24px; margin-bottom: 28px;
+    columns: 2; column-gap: 32px;
+  }
+  .toc h3 { color: #fff; font-size: 16px; margin-bottom: 10px; column-span: all; }
+  .toc a { display: block; font-size: 13px; color: var(--accent); text-decoration: none; padding: 3px 0; }
+  .toc a:hover { text-decoration: underline; }
+
+  @media (max-width: 900px) {
+    .split { grid-template-columns: 1fr; }
+    .toc { columns: 1; }
+  }
+</style>
+
+  <!-- MathJax 3 -->
+  <script>
+  MathJax = {
+    tex: { inlineMath: [['\\(', '\\)']], displayMath: [['\\[', '\\]']] },
+    options: { ignoreHtmlClass: 'algo-code|no-math' }
+  };
+  </script>
+  <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+</head>
+<body>
+
+<nav>
+  <strong style="color:#fff;font-size:14px;">3DGS Code Guide</strong>
+  <span class="sep">|</span>
+  <a href="#overview">Overview</a>
+  <a href="#pipeline">Pipeline</a>
+  <a href="#entry">入口脚本</a>
+  <a href="#gaussian">GaussianModel</a>
+  <a href="#renderer">Renderer</a>
+  <a href="#scene">Scene</a>
+  <a href="#utils">Utils</a>
+  <a href="#config">Config</a>
+  <a href="#cpp">C++/CUDA</a>
+</nav>
+
+<div class="container">
+
+<header>
+  <h1>3D Gaussian Splatting for Real-Time Radiance Field Rendering</h1>
+  <p>代码导读 &middot; 按文件/函数梳理 &middot; 左侧代码 &middot; 右侧解释</p>
+  <div style="margin-top:10px;">
+    <span class="badge badge-py">Python</span>
+    <span class="badge badge-cu">CUDA/C++</span>
+    <span class="badge badge-core">INRIA GRAPHDECO</span>
+  </div>
+</header>
+
+<div class="toc" id="overview">
+  <h3>文件索引</h3>
+  <a href="#s-train">train.py — 训练主循环</a>
+  <a href="#s-render">render.py — 推理渲染</a>
+  <a href="#s-full_eval">full_eval.py — 全量评测</a>
+  <a href="#s-metrics">metrics.py — PSNR/SSIM/LPIPS</a>
+  <a href="#s-convert">convert.py — COLMAP 预处理</a>
+  <a href="#s-gaussian">scene/gaussian_model.py ★核心</a>
+  <a href="#s-gs-renderer">gaussian_renderer/__init__.py ★核心</a>
+  <a href="#s-scene">scene/__init__.py</a>
+  <a href="#s-cameras">scene/cameras.py</a>
+  <a href="#s-dataset">scene/dataset_readers.py</a>
+  <a href="#s-colmap">scene/colmap_loader.py</a>
+  <a href="#s-sh">utils/sh_utils.py</a>
+  <a href="#s-loss">utils/loss_utils.py</a>
+  <a href="#s-graphics">utils/graphics_utils.py</a>
+  <a href="#s-general">utils/general_utils.py</a>
+  <a href="#s-image">utils/image_utils.py</a>
+  <a href="#s-camera-util">utils/camera_utils.py</a>
+  <a href="#s-args">arguments/__init__.py</a>
+  <a href="#s-network">gaussian_renderer/network_gui.py</a>
+  <a href="#s-depth">utils/make_depth_scale.py</a>
+  <a href="#s-system">utils/system_utils.py</a>
+  <a href="#s-cpp">C++/CUDA 子模块</a>
+</div>
+
+<!-- ═══════════ PIPELINE OVERVIEW ═══════════ -->
+<section id="pipeline">
+  <h2 class="section-title">训练 Pipeline 总览</h2>
+  <div class="pipeline">
+    <div class="pipe-step"><div class="num">1</div><div class="label">COLMAP<br>SfM 稀疏点云</div></div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-step"><div class="num">2</div><div class="label">初始化<br>3D Gaussians</div></div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-step"><div class="num">3</div><div class="label">Differentiable<br>Rasterizer</div></div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-step"><div class="num">4</div><div class="label">L1+SSIM<br>Loss</div></div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-step"><div class="num">5</div><div class="label">Backward<br>+ Adam</div></div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-step"><div class="num">6</div><div class="label">Densify<br>&amp; Prune</div></div>
+  </div>
+
+  <div class="callout">
+    <strong>核心思想</strong>：用大量各向异性 3D 高斯椭球体表示场景。每个高斯有 59 个可优化参数（位置3 + 颜色48(SH) + 协方差7 + 不透明度1）。
+    通过可微分光栅化将高斯投影到 2D，与真实图像对比计算 loss，反向传播更新参数，并动态增删高斯（densification/pruning）。
+    论文: <em>"3D Gaussian Splatting for Real-Time Radiance Field Rendering"</em>, Kerbl et al., SIGGRAPH 2023.
+  </div>
+
+  <div class="callout">
+    <strong>数据流</strong>：COLMAP SfM → 稀疏点云 (.ply) + 相机位姿 → Scene 加载 → GaussianModel 初始化
+    → training() 循环 { 随机选视角 → render() 光栅化 → 计算 loss → backward → optimizer.step → densify/prune }
+    → 保存 .ply → render.py 出图 → metrics.py 算指标。
+  </div>
+</section>
+
+<!-- ═══════════ ENTRY POINTS ═══════════ -->
+<section id="entry">
+  <h2 class="section-title">入口脚本 (Top-Level Scripts)</h2>
+
+  <!-- train.py -->
+  <div id="s-train" style="margin-bottom:28px;">
+    <h3 style="color:#fff;">train.py <span class="file">— 训练主循环 (核心入口)</span></h3>
+    <div class="func-cards">
+      <div class="func-card">
+        <div class="name"><span class="tag tag-core">入口</span> training()</div>
+        <div class="desc">完整训练循环: 初始化 → 迭代 {取视角,渲染,算loss,backward,step,densify} → 保存/评测。约 30,000 次迭代。</div>
+      </div>
+      <div class="func-card">
+        <div class="name"><span class="tag tag-util">辅助</span> prepare_output_and_logger()</div>
+        <div class="desc">创建输出目录、TensorBoard writer。</div>
+      </div>
+      <div class="func-card">
+        <div class="name"><span class="tag tag-util">辅助</span> training_report()</div>
+        <div class="desc">记录 TensorBoard scalars + 在 test_iterations 时渲染 test/train 视图，计算 L1/PSNR。</div>
+      </div>
+    </div>
+
+    <div class="split">
+      <div class="left"><pre><span class="comment"># ── train.py: 核心训练循环 ──</span>
+
+<span class="kw">def</span> <span class="fn">training</span>(dataset, opt, pipe, testing_iterations,
+              saving_iterations, checkpoint_iterations,
+              checkpoint, debug_from):
+
+    <span class="comment"># 1. 初始化</span>
+    gaussians = <span class="fn">GaussianModel</span>(dataset.sh_degree)
+    scene = <span class="fn">Scene</span>(dataset, gaussians)
+    gaussians.<span class="fn">training_setup</span>(opt)
+    <span class="kw">if</span> checkpoint:
+        gaussians.<span class="fn">restore</span>(checkpoint)
+
+    bg_color = [<span class="num">1</span>,<span class="num">1</span>,<span class="num">1</span>] <span class="kw">if</span> dataset.white_background
+               <span class="kw">else</span> [<span class="num">0</span>,<span class="num">0</span>,<span class="num">0</span>]
+    background = torch.tensor(bg_color, device=<span class="str">"cuda"</span>)
+
+    viewpoint_stack = scene.<span class="fn">getTrainCameras</span>().copy()
+    viewpoint_indices = list(range(len(viewpoint_stack)))
+
+    <span class="kw">for</span> iteration <span class="kw">in</span> range(<span class="num">1</span>, opt.iterations + <span class="num">1</span>):
+
+        <span class="comment"># 2. 每 1000 步升一级 SH</span>
+        <span class="kw">if</span> iteration % <span class="num">1000</span> == <span class="num">0</span>:
+            gaussians.<span class="fn">oneupSHdegree</span>()
+
+        <span class="comment"># 3. 随机取一个训练视角 (不放回)</span>
+        rand_idx = randint(<span class="num">0</span>, len(viewpoint_indices)-<span class="num">1</span>)
+        viewpoint_cam = viewpoint_stack.pop(rand_idx)
+        <span class="kw">if</span> <span class="kw">not</span> viewpoint_stack:
+            viewpoint_stack = scene.<span class="fn">getTrainCameras</span>().copy()
+
+        <span class="comment"># 4. 可微分光栅化渲染</span>
+        render_pkg = <span class="fn">render</span>(viewpoint_cam, gaussians, pipe, bg)
+        image = render_pkg[<span class="str">"render"</span>]
+
+        <span class="comment"># 5. Loss = (1-λ)*L1 + λ*(1-SSIM)</span>
+        Ll1 = <span class="fn">l1_loss</span>(image, gt_image)
+        ssim_val = <span class="fn">ssim</span>(image, gt_image)
+        loss = (<span class="num">1.0</span> - opt.lambda_dssim) * Ll1 \
+             + opt.lambda_dssim * (<span class="num">1.0</span> - ssim_val)
+
+        <span class="comment"># 6. 可选深度正则化</span>
+        <span class="kw">if</span> depth_l1_weight(iteration) > <span class="num">0</span>:
+            loss += depth_l1_weight(it) * |invDepth - mono_invDepth|
+
+        <span class="comment"># 7. 反向传播</span>
+        loss.<span class="fn">backward</span>()
+
+        <span class="kw">with</span> torch.no_grad():
+            <span class="comment"># 8. Densification (前15k步)</span>
+            <span class="kw">if</span> iteration < opt.densify_until_iter:
+                gaussians.<span class="fn">add_densification_stats</span>(...)
+                <span class="kw">if</span> iteration % opt.densification_interval == <span class="num">0</span>:
+                    gaussians.<span class="fn">densify_and_prune</span>(...)
+                <span class="kw">if</span> iteration % opt.opacity_reset_interval == <span class="num">0</span>:
+                    gaussians.<span class="fn">reset_opacity</span>()
+
+            <span class="comment"># 9. Optimizer step</span>
+            gaussians.optimizer.<span class="fn">step</span>()
+            gaussians.optimizer.<span class="fn">zero_grad</span>()
+
+            <span class="comment"># 10. 定期报告 & 保存</span>
+            <span class="kw">if</span> iteration <span class="kw">in</span> testing_iterations:
+                <span class="fn">training_report</span>(...)
+            <span class="kw">if</span> iteration <span class="kw">in</span> saving_iterations:
+                scene.<span class="fn">save</span>(iteration)</pre></div>
+      <div class="right">
+        <h4>training() — 主循环详解</h4>
+        <p>这是整个项目的<span class="highlight">核心入口</span>。输入是解析好的三类参数：<code>ModelParams</code>（数据路径）、<code>OptimizationParams</code>（训练超参）、<code>PipelineParams</code>（渲染管线选项）。</p>
+        <p><strong>第1步 — 初始化：</strong></p>
+        <ul>
+          <li><code>GaussianModel(sh_degree)</code> 创建一个空的 3D 高斯容器</li>
+          <li><code>Scene(dataset, gaussians)</code> 读取 COLMAP 数据，从稀疏点云初始化高斯位置和颜色</li>
+          <li><code>training_setup(opt)</code> 为各参数组创建 Adam optimizer，设置学习率 scheduler</li>
+        </ul>
+        <p><strong>第3步 — 随机视角采样：</strong>不放回地从训练集中 pop 一个相机，当栈空时重新填充。这确保了梯度计算的随机性，同时每个 epoch 内所有视角都被用到。</p>
+        <p><strong>第4-7步 — 渲染+反向传播：</strong>核心计算——调用 CUDA rasterizer 投影高斯到 2D，合成图像，与 GT 比较。loss = (1-λ)·L1 + λ·(1-SSIM)，λ=0.2。L1 保留高频细节，SSIM 衡量结构相似性。</p>
+        <p><strong>第8步 — 高斯致密化：</strong>仅在前 15k 步执行。基于 view-space 梯度累积判断高斯的"欠重建"程度：梯度大的分裂 (split)，梯度中等且小的克隆 (clone)，不透明度低的或过大的删除 (prune)。每 3k 步重置不透明度。</p>
+        <p><strong>第10步 — 保存 checkpoint：</strong>保存 .ply (仅高斯参数) 和 .pth (完整 optimizer 状态)，可用于恢复训练或测试。</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- render.py -->
+  <div id="s-render" style="margin-bottom:28px;">
+    <h3 style="color:#fff;">render.py <span class="file">— 渲染脚本</span></h3>
+    <div class="split">
+      <div class="left"><pre><span class="kw">def</span> <span class="fn">render_set</span>(model_path, name, iteration,
+                 views, gaussians, pipeline,
+                 background, train_test_exp, separate_sh):
+    <span class="kw">for</span> idx, view <span class="kw">in</span> enumerate(views):
+        rendering = <span class="fn">render</span>(view, gaussians, pipeline,
+                         background)[<span class="str">"render"</span>]
+        torchvision.utils.<span class="fn">save_image</span>(
+            rendering, f<span class="str">"{idx:05d}.png"</span>)
+        torchvision.utils.<span class="fn">save_image</span>(
+            view.original_image, f<span class="str">"{idx:05d}.png"</span>)
+
+<span class="kw">def</span> <span class="fn">render_sets</span>(dataset, iteration, pipeline,
+                    skip_train, skip_test, separate_sh):
+    gaussians = <span class="fn">GaussianModel</span>(dataset.sh_degree)
+    scene = <span class="fn">Scene</span>(dataset, gaussians,
+                    load_iteration=iteration,
+                    shuffle=<span class="kw">False</span>)
+    <span class="kw">if</span> <span class="kw">not</span> skip_train:
+        <span class="fn">render_set</span>(...scene.getTrainCameras()...)
+    <span class="kw">if</span> <span class="kw">not</span> skip_test:
+        <span class="fn">render_set</span>(...scene.getTestCameras()...)</pre></div>
+      <div class="right">
+        <h4>render.py — 从训练好的模型生成图像</h4>
+        <p>加载训练好的高斯模型（从 .ply 文件），遍历所有测试/训练视角，调用 <code>render()</code> 生成渲染结果，保存为 PNG。</p>
+        <ul>
+          <li><code>render_set()</code> — 遍历视角列表，渲染每个视角并保存到 <code>model_path/name/ours_{iter}/renders/</code> 和 <code>gt/</code></li>
+          <li><code>render_sets()</code> — 加载模型，分别处理 train/test 视角</li>
+          <li>命令行：<code>python render.py -m output/scene --iteration 30000</code></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- full_eval.py -->
+  <div id="s-full_eval" style="margin-bottom:28px;">
+    <h3 style="color:#fff;">full_eval.py <span class="file">— 全量基准评测</span></h3>
+    <div class="split">
+      <div class="left"><pre><span class="comment"># 定义所有基准场景</span>
+mipnerf360_outdoor = [<span class="str">"bicycle"</span>,<span class="str">"flowers"</span>,<span class="str">"garden"</span>,
+                      <span class="str">"stump"</span>,<span class="str">"treehill"</span>]
+mipnerf360_indoor  = [<span class="str">"room"</span>,<span class="str">"counter"</span>,<span class="str">"kitchen"</span>,<span class="str">"bonsai"</span>]
+tanks_and_temples  = [<span class="str">"truck"</span>, <span class="str">"train"</span>]
+deep_blending      = [<span class="str">"drjohnson"</span>, <span class="str">"playroom"</span>]
+
+<span class="comment"># 依次训练所有场景</span>
+<span class="kw">for</span> scene <span class="kw">in</span> all_scenes:
+    os.<span class="fn">system</span>(f<span class="str">"python train.py -s {source} -m ..."</span>)
+
+<span class="comment"># 对 iter 7k 和 30k 分别渲染</span>
+<span class="kw">for</span> scene, source <span class="kw">in</span> zip(all_scenes, all_sources):
+    os.<span class="fn">system</span>(f<span class="str">"python render.py --iteration 7000 ..."</span>)
+    os.<span class="fn">system</span>(f<span class="str">"python render.py --iteration 30000 ..."</span>)
+
+<span class="comment"># 统一计算指标</span>
+os.<span class="fn">system</span>(f<span class="str">"python metrics.py -m {all_output_dirs}"</span>)</pre></div>
+      <div class="right">
+        <h4>full_eval.py — 一键全量评测</h4>
+        <p>对论文中的全部 13 个场景执行完整的 训练→渲染→评测 流程：</p>
+        <ul>
+          <li><strong>训练阶段：</strong>依次对每个场景调用 <code>train.py</code></li>
+          <li><strong>渲染阶段：</strong>对 iter 7000 和 30000 分别渲染</li>
+          <li><strong>评测阶段：</strong>统一调用 <code>metrics.py</code></li>
+          <li>支持 <code>--skip_training</code>/<code>--skip_rendering</code>/<code>--skip_metrics</code></li>
+          <li><code>--fast</code> 使用 sparse_adam 加速；<code>--use_depth</code> 启用深度正则化</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- metrics.py -->
+  <div id="s-metrics" style="margin-bottom:28px;">
+    <h3 style="color:#fff;">metrics.py <span class="file">— 图像质量评估</span></h3>
+    <div class="split">
+      <div class="left"><pre><span class="kw">def</span> <span class="fn">readImages</span>(renders_dir, gt_dir):
+    renders, gts, image_names = [], [], []
+    <span class="kw">for</span> fname <span class="kw">in</span> os.listdir(renders_dir):
+        render = Image.open(renders_dir / fname)
+        gt = Image.open(gt_dir / fname)
+        renders.append(tf.to_tensor(render)[:, :3].cuda())
+        gts.append(tf.to_tensor(gt)[:, :3].cuda())
+    <span class="kw">return</span> renders, gts, image_names
+
+<span class="kw">def</span> <span class="fn">evaluate</span>(model_paths):
+    <span class="kw">for</span> scene_dir <span class="kw">in</span> model_paths:
+        <span class="kw">for</span> method <span class="kw">in</span> os.listdir(test_dir):
+            renders, gts, _ = <span class="fn">readImages</span>(renders_dir, gt_dir)
+            ssims, psnrs, lpipss = [], [], []
+            <span class="kw">for</span> idx <span class="kw">in</span> range(len(renders)):
+                ssims.append(<span class="fn">ssim</span>(renders[idx], gts[idx]))
+                psnrs.append(<span class="fn">psnr</span>(renders[idx], gts[idx]))
+                lpipss.append(<span class="fn">lpips</span>(renders[idx], gts[idx], net_type=<span class="str">'vgg'</span>))
+            <span class="comment"># 输出均值并保存 results.json / per_view.json</span></pre></div>
+      <div class="right">
+        <h4>metrics.py — 三项指标评估</h4>
+        <ul>
+          <li><strong>PSNR</strong> (utils/image_utils.py) — 峰值信噪比，基于 MSE。>30dB 通常认为质量好</li>
+          <li><strong>SSIM</strong> (utils/loss_utils.py) — 结构相似性，11×11 高斯窗口滑动</li>
+          <li><strong>LPIPS</strong> (lpipsPyTorch/) — 感知相似度，用 VGG 网络特征计算。更接近人类视觉感知</li>
+        </ul>
+        <p>输出两个 JSON：<code>results.json</code>（全局均值）和 <code>per_view.json</code>（逐视角详细值）。</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- convert.py -->
+  <div id="s-convert" style="margin-bottom:28px;">
+    <h3 style="color:#fff;">convert.py <span class="file">— COLMAP 数据预处理</span></h3>
+    <div class="split">
+      <div class="left"><pre><span class="comment"># 1. SIFT 特征提取</span>
+os.<span class="fn">system</span>(<span class="str">"colmap feature_extractor ..."</span>)
+<span class="comment"># 2. 穷举特征匹配</span>
+os.<span class="fn">system</span>(<span class="str">"colmap exhaustive_matcher ..."</span>)
+<span class="comment"># 3. Bundle Adjustment (SfM)</span>
+os.<span class="fn">system</span>(<span class="str">"colmap mapper ..."</span>)
+<span class="comment"># 4. 图像去畸变 → 针孔模型</span>
+os.<span class="fn">system</span>(<span class="str">"colmap image_undistorter ..."</span>)
+<span class="comment"># 5. (可选) 多尺度缩放 50%/25%/12.5%</span>
+os.<span class="fn">system</span>(<span class="str">"magick mogrify -resize 50% ..."</span>)</pre></div>
+      <div class="right">
+        <h4>convert.py — COLMAP SfM 预处理</h4>
+        <p>将原始照片转换为 3DGS 训练所需的数据格式：</p>
+        <ol style="color:var(--text-muted);font-size:14px;margin-left:18px;">
+          <li><strong>特征提取</strong> — 对每张图提取 SIFT 特征</li>
+          <li><strong>特征匹配</strong> — 穷举匹配所有图像对</li>
+          <li><strong>SfM</strong> — Bundle Adjustment 恢复相机位姿 + 稀疏点云</li>
+          <li><strong>去畸变</strong> — 转为理想针孔相机模型 (PINHOLE)</li>
+          <li><strong>多尺度缩放</strong> — 生成 1/2, 1/4, 1/8 分辨率版本</li>
+        </ol>
+        <p>输出目录：<code>sparse/0/</code> (相机位姿+点云)、<code>images/</code> (去畸变后图像)。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ GAUSSIAN MODEL ═══════════ -->
+<section id="gaussian">
+  <h2 class="section-title">scene/gaussian_model.py <span class="file">— 3D 高斯模型 ★核心类★</span></h2>
+
+  <div class="callout">
+    <strong>这是整个代码库最重要的文件。</strong> <code>GaussianModel</code> 类管理所有 3D 高斯的参数、优化器、densification/pruning 逻辑。
+    每个高斯 = 完整协方差矩阵 Σ(S,R) + 位置 μ + 不透明度 α + 球谐系数 (视角相关颜色)。共 59 维参数。
+  </div>
+
+  <div class="func-cards">
+    <div class="func-card">
+      <div class="name"><span class="tag tag-core">初始化</span> create_from_pcd()</div>
+      <div class="desc">从 COLMAP 稀疏点云初始化：位置=点云坐标，颜色=RGB→SH(DC)，scale=最近邻距离的 log，rotation=单位四元数，opacity=0.1。</div>
+    </div>
+    <div class="func-card">
+      <div class="name"><span class="tag tag-core">优化</span> training_setup()</div>
+      <div class="desc">创建 Adam optimizer（6个参数组各不同lr：xyz, f_dc, f_rest, opacity, scaling, rotation），指数衰减调度器。</div>
+    </div>
+    <div class="func-card">
+      <div class="name"><span class="tag tag-core">增删</span> densify_and_prune()</div>
+      <div class="desc">核心致密化：view-space 梯度大→clone(小高斯)或split(大高斯)，不透明度低/过大→prune。</div>
+    </div>
+    <div class="func-card">
+      <div class="name"><span class="tag tag-core">IO</span> save_ply() / load_ply()</div>
+      <div class="desc">序列化到 .ply（每个高斯一行：x,y,z,f_dc_*,f_rest_*,opacity,scale_*,rot_*），便于查看和交换。</div>
+    </div>
+  </div>
+
+  <div class="split">
+    <div class="left"><pre><span class="comment"># ═══ 激活函数 — 将 raw 参数映射到有效范围 ═══</span>
+<span class="kw">def</span> <span class="fn">setup_functions</span>(self):
+    self.scaling_activation   = torch.exp       <span class="comment"># log→正实数</span>
+    self.opacity_activation   = torch.sigmoid   <span class="comment"># logit→[0,1]</span>
+    self.rotation_activation  = F.normalize     <span class="comment"># 任意→单位四元数</span>
+
+    <span class="comment"># 协方差构造: Σ = RSSᵀRᵀ</span>
+    <span class="kw">def</span> <span class="fn">build_covariance_from_scaling_rotation</span>(scaling, scaling_mod, rotation):
+        L = <span class="fn">build_scaling_rotation</span>(scaling_mod * scaling, rotation)
+        <span class="comment">#   L = R · diag(s_mod * s)  →  Σ = L @ Lᵀ</span>
+        actual_covariance = L @ L.transpose(<span class="num">1</span>, <span class="num">2</span>)
+        <span class="kw">return</span> <span class="fn">strip_symmetric</span>(actual_covariance)
+        <span class="comment">#   只保留上三角6个分量 (协方差对称)</span>
+    self.covariance_activation = build_covariance_from_scaling_rotation
+
+<span class="comment"># ═══ 核心属性 (raw 参数 + property getter) ═══</span>
+<span class="kw">class</span> <span class="fn">GaussianModel</span>:
+    self._xyz           <span class="comment"># (N,3) — 世界坐标位置 μ</span>
+    self._features_dc   <span class="comment"># (N,1,3) — SH 0阶 DC (基础色)</span>
+    self._features_rest <span class="comment"># (N,15,3) — SH 1~3阶 (视角相关)</span>
+    self._scaling       <span class="comment"># (N,3) — log(s) 尺度</span>
+    self._rotation      <span class="comment"># (N,4) — 四元数 r</span>
+    self._opacity       <span class="comment"># (N,1) — logit(α) 不透明度</span>
+
+    self.max_radii2D        <span class="comment"># 屏幕空间最大半径 (prune用)</span>
+    self.xyz_gradient_accum <span class="comment"># view-space 梯度累积 (densify用)</span>
+    self.denom              <span class="comment"># 累积次数 (用于梯度归一化)</span>
+
+<span class="kw">@property</span>
+<span class="kw">def</span> <span class="fn">get_scaling</span>(self):  <span class="kw">return</span> torch.exp(self._scaling)
+<span class="kw">@property</span>
+<span class="kw">def</span> <span class="fn">get_opacity</span>(self):  <span class="kw">return</span> torch.sigmoid(self._opacity)
+<span class="kw">@property</span>
+<span class="kw">def</span> <span class="fn">get_rotation</span>(self): <span class="kw">return</span> F.normalize(self._rotation)</pre></div>
+    <div class="right">
+      <h4>高斯参数化 (Parameterization)</h4>
+      <p>每个 3D 高斯在空间中定义为：</p>
+      <p class="math">\[G(x) = \exp\left(-\frac{1}{2}(x-\mu)^T \Sigma^{-1}(x-\mu)\right)\]</p>
+      <p>其中协方差矩阵 <strong>\(\Sigma = RSS^T R^T\)</strong>：</p>
+      <ul>
+        <li><strong>\(S\)</strong> = \(\text{diag}(s_1, s_2, s_3)\) — 三轴尺度（存储为 \(\log(s)\) 以保证 >0）</li>
+        <li><strong>\(R\)</strong> — 3×3 旋转矩阵（由四元数 \(r \in \mathbb{R}^4\) 构建，\(|r|=1\)）</li>
+        <li>这种分解保证 \(\Sigma\) 始终是正定矩阵</li>
+      </ul>
+      <p><strong>为什么存 raw + 激活函数？</strong>优化需要无约束空间。scaling 存 log(s)（exp后 >0），opacity 存 logit(α)（sigmoid后 ∈[0,1]），rotation 用四元数（normalize后为单位四元数）。</p>
+      <p><strong>球谐系数 (SH)</strong>：max 4 阶 = 16 系数 × RGB 3 通道 = 48 维（+ DC 3 维 = 51 维）。SH 让高斯颜色随观察方向变化，产生镜面反射等视角相关效果。</p>
+    </div>
+  </div>
+
+  <div class="split">
+    <div class="left"><pre><span class="comment"># ═══ 从点云初始化 ═══</span>
+<span class="kw">def</span> <span class="fn">create_from_pcd</span>(self, pcd, cam_infos, spatial_lr_scale):
+    <span class="comment"># 1. 位置 = 点云坐标</span>
+    points = torch.tensor(pcd.points).cuda()
+
+    <span class="comment"># 2. RGB → SH DC 分量 (0阶)</span>
+    color_SH = <span class="fn">RGB2SH</span>(torch.tensor(pcd.colors).cuda())
+    features = zeros(N, <span class="num">3</span>, (max_sh_degree+<span class="num">1</span>)**<span class="num">2</span>)
+    features[:, :<span class="num">3</span>, <span class="num">0</span>] = color_SH     <span class="comment"># DC</span>
+    features[:, <span class="num">3</span>:, <span class="num">1</span>:] = <span class="num">0.0</span>           <span class="comment"># 高阶初始为0</span>
+
+    <span class="comment"># 3. scale = 最近邻距离 (CUDA KNN)</span>
+    dist2 = <span class="fn">distCUDA2</span>(points)
+    scales = torch.log(torch.sqrt(dist2)).repeat(<span class="num">1</span>, <span class="num">3</span>)
+
+    <span class="comment"># 4. rotation = 单位四元数 (w=1, 无旋转)</span>
+    rots = zeros(N, <span class="num">4</span>); rots[:, <span class="num">0</span>] = <span class="num">1</span>
+
+    <span class="comment"># 5. opacity = sigmoid⁻¹(0.1) ≈ -2.2</span>
+    opacities = <span class="fn">inverse_sigmoid</span>(<span class="num">0.1</span> * ones(N, <span class="num">1</span>))
+
+    <span class="comment"># 6. 全部注册为 nn.Parameter</span>
+    self._xyz = nn.Parameter(points)
+    self._features_dc  = nn.Parameter(features[:,:,<span class="num">0</span>:<span class="num">1</span>])
+    self._features_rest = nn.Parameter(features[:,:,<span class="num">1</span>:])
+    self._scaling  = nn.Parameter(scales)
+    self._rotation = nn.Parameter(rots)
+    self._opacity  = nn.Parameter(opacities)</pre></div>
+    <div class="right">
+      <h4>create_from_pcd() — 从 SfM 点云初始化</h4>
+      <ul>
+        <li><strong>位置</strong>直接从 COLMAP SfM 输出的稀疏点云获取（通常几千到几万点）</li>
+        <li><strong>颜色</strong>从点云 RGB 转为 SH DC (0阶) 分量——初始状态与视角无关</li>
+        <li><strong>尺度</strong>取每个点到最近邻的欧氏距离——稀疏区域高斯大，密集区域高斯小</li>
+        <li><strong>旋转</strong>初始化为无旋转（单位四元数 w=1）</li>
+        <li><strong>不透明度</strong>初始化为 0.1（中等偏低的合理初值）</li>
+      </ul>
+      <p>所有参数注册为 <code>nn.Parameter</code>，PyTorch 自动追踪梯度。</p>
+    </div>
+  </div>
+
+  <div class="split">
+    <div class="left"><pre><span class="comment"># ═══ 训练配置 — 6个参数组，各自独立学习率 ═══</span>
+<span class="kw">def</span> <span class="fn">training_setup</span>(self, training_args):
+    l = [
+      {<span class="str">'params'</span>: [self._xyz],
+       <span class="str">'lr'</span>: position_lr_init * spatial_lr_scale,  <span class="comment"># ~1.6e-4</span>
+       <span class="str">"name"</span>: <span class="str">"xyz"</span>},
+      {<span class="str">'params'</span>: [self._features_dc],
+       <span class="str">'lr'</span>: <span class="num">0.0025</span>, <span class="str">"name"</span>: <span class="str">"f_dc"</span>},
+      {<span class="str">'params'</span>: [self._features_rest],
+       <span class="str">'lr'</span>: <span class="num">0.0025</span> / <span class="num">20.0</span>, <span class="str">"name"</span>: <span class="str">"f_rest"</span>},
+      {<span class="str">'params'</span>: [self._opacity],
+       <span class="str">'lr'</span>: <span class="num">0.025</span>, <span class="str">"name"</span>: <span class="str">"opacity"</span>},
+      {<span class="str">'params'</span>: [self._scaling],
+       <span class="str">'lr'</span>: <span class="num">0.005</span>, <span class="str">"name"</span>: <span class="str">"scaling"</span>},
+      {<span class="str">'params'</span>: [self._rotation],
+       <span class="str">'lr'</span>: <span class="num">0.001</span>, <span class="str">"name"</span>: <span class="str">"rotation"</span>}
+    ]
+    self.optimizer = torch.optim.<span class="fn">Adam</span>(l, lr=<span class="num">0.0</span>, eps=<span class="num">1e-15</span>)
+    <span class="comment"># xyz 学习率按指数衰减</span>
+    self.xyz_scheduler_args = <span class="fn">get_expon_lr_func</span>(
+        lr_init=position_lr_init * spatial_lr_scale,
+        lr_final=position_lr_final * spatial_lr_scale, ...)
+
+<span class="comment"># ═══ 学习率调度 + SH递增 ═══</span>
+<span class="kw">def</span> <span class="fn">update_learning_rate</span>(self, iteration):
+    <span class="kw">for</span> pg <span class="kw">in</span> self.optimizer.param_groups:
+        <span class="kw">if</span> pg[<span class="str">"name"</span>] == <span class="str">"xyz"</span>:
+            pg[<span class="str">'lr'</span>] = self.<span class="fn">xyz_scheduler_args</span>(iteration)
+
+<span class="kw">def</span> <span class="fn">oneupSHdegree</span>(self):
+    <span class="kw">if</span> self.active_sh_degree < self.max_sh_degree:
+        self.active_sh_degree += <span class="num">1</span></pre></div>
+    <div class="right">
+      <h4>training_setup() — 优化器 & 调度策略</h4>
+      <p><strong>差异化学习率</strong>（不同物理含义的参数需要不同 lr）：</p>
+      <ul>
+        <li><strong>xyz 位置</strong> — lr 最高，指数衰减（如 1.6e-4 → 1.6e-6）；乘以 <code>spatial_lr_scale</code> 适应不同场景尺度</li>
+        <li><strong>颜色特征 (SH)</strong> — DC lr=0.0025，高阶 lr 低 20 倍 (0.000125)，防止高频颜色过早拟合</li>
+        <li><strong>不透明度</strong> — lr=0.025，高 lr 快速学习可见性</li>
+        <li><strong>尺度 + 旋转</strong> — 中等 lr</li>
+      </ul>
+      <p><strong>SH 递增训练：</strong>每 1000 步提升一阶。训练初期只有 DC（视角无关色），几何收敛后逐步引入高阶 SH 捕捉视角相关效果。避免早期用高阶 SH 拟合噪声。</p>
+    </div>
+  </div>
+
+  <div class="split">
+    <div class="left"><pre><span class="comment"># ═══ 致密化 — Clone / Split / Prune ═══</span>
+<span class="kw">def</span> <span class="fn">densify_and_prune</span>(self, max_grad, min_opacity,
+                       extent, max_screen_size, radii):
+    grads = self.xyz_gradient_accum / self.denom
+    self.tmp_radii = radii
+
+    <span class="comment"># Clone: 梯度大 + 尺度小 → 复制 (填充欠重建区)</span>
+    self.<span class="fn">densify_and_clone</span>(grads, max_grad, extent)
+
+    <span class="comment"># Split: 梯度大 + 尺度大 → 分裂 (细化过粗高斯)</span>
+    self.<span class="fn">densify_and_split</span>(grads, max_grad, extent)
+
+    <span class="comment"># Prune: α < 0.005 / 屏幕半径过大 / 世界尺度过大</span>
+    prune_mask = (self.get_opacity < min_opacity).squeeze()
+    <span class="kw">if</span> max_screen_size:
+        prune_mask |= (self.max_radii2D > max_screen_size)
+        prune_mask |= (max(scaling) > <span class="num">0.1</span> * extent)
+    self.<span class="fn">prune_points</span>(prune_mask)
+
+<span class="kw">def</span> <span class="fn">densify_and_split</span>(self, grads, grad_threshold, extent, N=<span class="num">2</span>):
+    selected = (grads >= grad_threshold)
+             & (max(scaling) > percent_dense * extent)
+    <span class="comment"># 在高斯局部坐标系中采样 N 个新位置</span>
+    stds = self.get_scaling[selected].repeat(N, <span class="num">1</span>)
+    samples = torch.normal(mean=<span class="num">0</span>, std=stds)
+    rots = <span class="fn">build_rotation</span>(self._rotation[selected]).repeat(N, <span class="num">1</span>, <span class="num">1</span>)
+    new_xyz = rots @ samples + self.get_xyz[selected].repeat(N, <span class="num">1</span>)
+    <span class="comment"># 新尺度缩小</span>
+    new_scaling = <span class="fn">scaling_inv</span>(self.get_scaling[selected].repeat(N, <span class="num">1</span>) / (<span class="num">0.8</span>*N))
+    <span class="comment"># 添加新点，删除原高斯</span>
+    self.<span class="fn">densification_postfix</span>(new_xyz, ..., new_scaling, ...)
+    self.<span class="fn">prune_points</span>(selected)
+
+<span class="kw">def</span> <span class="fn">add_densification_stats</span>(self, viewspace_point_tensor, update_filter):
+    self.xyz_gradient_accum[update_filter] += \
+        torch.norm(viewspace_point_tensor.grad[update_filter, :<span class="num">2</span>], dim=-<span class="num">1</span>, keepdim=True)
+    self.denom[update_filter] += <span class="num">1</span></pre></div>
+    <div class="right">
+      <h4>致密化 (Densification) — 自适应控制高斯数量</h4>
+      <p>这是 3DGS 最重要的贡献之一。训练过程中高斯从几千个动态增长到数百万个。</p>
+      <p><strong>梯度累积：</strong>每步 <code>add_densification_stats()</code> 累积 view-space 位置梯度的 L2 范数。梯度大 = 该区域"欠重建"。</p>
+      <p><strong>Clone（克隆）：</strong>梯度大 + 尺度小 → 需要更多高斯覆盖 → 复制一份让它们各自移动去覆盖不同区域。用于重建精细几何。</p>
+      <p><strong>Split（分裂）：</strong>梯度大 + 尺度大 → 高斯太大覆盖了不该覆盖的区域 → 分裂成 N=2 个小高斯，在原高斯局部坐标系中采样新位置，尺度缩小为 1/(0.8·N)。</p>
+      <p><strong>Prune（剪枝）：</strong>α<0.005（几乎透明）→删。屏幕半径>阈值（过大）→删。世界尺度>0.1·extent（可能是漂浮物）→删。</p>
+      <p><strong>Opacity Reset：</strong>每 3000 步将 α clamp 到 ≥0.01，防止不透明度在训练早期被压低到难以恢复。</p>
+      <p>Densification 仅在前 15k 步执行（<code>densify_until_iter</code>），每 100 步一次（<code>densification_interval</code>），从第 500 步开始（<code>densify_from_iter</code>）。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ RENDERER ═══════════ -->
+<section id="renderer">
+  <h2 class="section-title" id="s-gs-renderer">gaussian_renderer/__init__.py <span class="file">— 可微分光栅化 ★核心★</span></h2>
+
+  <div class="callout">
+    <strong>Renderer 是连接高斯模型与 2D 图像的桥梁。</strong> 将 3D 高斯投影→排序→α-blend 合成像素颜色。
+    这个 Python 文件是 CUDA rasterizer 的 wrapper，真正的计算在 <code>diff-gaussian-rasterization</code> 子模块的 CUDA kernel 中。
+  </div>
+
+  <div class="split">
+    <div class="left"><pre><span class="kw">def</span> <span class="fn">render</span>(viewpoint_camera, pc: GaussianModel, pipe,
+            bg_color, scaling_modifier=<span class="num">1.0</span>,
+            separate_sh=<span class="kw">False</span>, override_color=<span class="kw">None</span>,
+            use_trained_exp=<span class="kw">False</span>):
+
+    <span class="comment"># Step 1: 创建 screen-space points (梯度回传占位)</span>
+    screenspace_points = torch.zeros_like(
+        pc.get_xyz, requires_grad=<span class="kw">True</span>) + <span class="num">0</span>
+    screenspace_points.<span class="fn">retain_grad</span>()
+
+    <span class="comment"># Step 2: 配置光栅化参数</span>
+    raster_settings = <span class="fn">GaussianRasterizationSettings</span>(
+        image_height, image_width,
+        tanfovx, tanfovy,           <span class="comment"># 视场角</span>
+        bg=bg_color,                <span class="comment"># 背景色</span>
+        viewmatrix=world_view,       <span class="comment"># 世界→相机 (4×4)</span>
+        projmatrix=full_proj,       <span class="comment"># 世界→NDC (4×4)</span>
+        sh_degree=pc.active_sh_degree,
+        campos=camera_center,       <span class="comment"># 相机世界坐标</span>
+        prefiltered=<span class="kw">False</span>,
+        debug=pipe.debug,
+        antialiasing=pipe.antialiasing
+    )
+    rasterizer = <span class="fn">GaussianRasterizer</span>(raster_settings)
+
+    <span class="comment"># Step 3: 提取高斯属性</span>
+    means3D = pc.get_xyz
+    opacity = pc.get_opacity
+    scales = pc.get_scaling       <span class="comment"># 或 precomputed cov3D</span>
+    rotations = pc.get_rotation
+
+    <span class="comment"># Step 4: SH → RGB (Python端可选)</span>
+    <span class="kw">if</span> pipe.convert_SHs_python:
+        dir_pp = normalize(means3D - camera_center)
+        sh2rgb = <span class="fn">eval_sh</span>(pc.active_sh_degree, shs_view, dir_pp)
+        colors_precomp = clamp_min(sh2rgb + <span class="num">0.5</span>, <span class="num">0.0</span>)
+    <span class="kw">else</span>:
+        shs = pc.get_features  <span class="comment"># CUDA端计算</span>
+
+    <span class="comment"># Step 5: 调用 CUDA Rasterizer</span>
+    rendered_image, radii, depth_image = rasterizer(
+        means3D, means2D,
+        shs=shs, colors_precomp=colors_precomp,
+        opacities=opacity,
+        scales=scales, rotations=rotations,
+        cov3D_precomp=<span class="kw">None</span>)
+
+    <span class="comment"># Step 6: 可选的 exposure 补偿</span>
+    <span class="kw">if</span> use_trained_exp:
+        exposure = pc.get_exposure_from_name(
+            viewpoint_camera.image_name)
+        rendered_image = exposure @ rendered_image
+
+    <span class="kw">return</span> {
+        <span class="str">"render"</span>: rendered_image.clamp(<span class="num">0</span>,<span class="num">1</span>),
+        <span class="str">"viewspace_points"</span>: screenspace_points,
+        <span class="str">"visibility_filter"</span>: (radii > <span class="num">0</span>).nonzero(),
+        <span class="str">"radii"</span>: radii,
+        <span class="str">"depth"</span>: depth_image,
+    }</pre></div>
+    <div class="right">
+      <h4>render() — 渲染管线完整流程</h4>
+      <ol style="color:var(--text-muted);font-size:14px;margin-left:18px;">
+        <li><strong>Screen-space points</strong> — 与高斯数量相同的 tensor，作为 2D 投影"占位符"。它的 .grad 就是 d(loss)/d(2D_position)，用于 densification 的梯度累积</li>
+        <li><strong>光栅化设置</strong> — 传入相机内外参、FOV、背景色、SH 阶数</li>
+        <li><strong>提取参数</strong> — 从 GaussianModel 获取所有高斯属性（经激活函数转换到有效范围）</li>
+        <li><strong>SH→RGB</strong> — Python端（<code>convert_SHs_python=True</code>）或 CUDA 端。核心是 <code>eval_sh()</code>，根据观察方向评估球谐函数</li>
+        <li><strong>CUDA Rasterizer</strong> — 核心计算：投影 3D→2D → tile排序 → α-blending → 输出图像（完全在 CUDA kernel 中）</li>
+        <li><strong>Exposure 补偿</strong> — 可选，处理图像曝光不一致（Mip-NeRF 360 户外场景）</li>
+      </ol>
+      <p><strong>关键返回值：</strong></p>
+      <ul>
+        <li><code>render</code> — RGB 图像 [3, H, W]</li>
+        <li><code>viewspace_points</code> — 2D 投影点，.grad 用于 densification</li>
+        <li><code>visibility_filter</code> — 实际参与渲染的高斯索引</li>
+        <li><code>radii</code> — 每个高斯在屏幕上的半径（像素）</li>
+        <li><code>depth</code> — 深度图（用于深度正则化）</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="split">
+    <div class="left"><pre><span class="comment"># ═══ 渲染中的数学 ═══</span>
+
+<span class="comment"># 1. 3D 高斯 → 2D 投影</span>
+<span class="comment">#   Σ̂ = J W Σ Wᵀ Jᵀ</span>
+<span class="comment">#   J: 投影变换的 Jacobian (仿射近似)</span>
+<span class="comment">#   W: 世界→相机 view transform</span>
+
+<span class="comment"># 2. 像素颜色 α-blending (按深度排序)</span>
+<span class="comment">#   C = Σᵢ cᵢ · αᵢ · Πⱼ₌₁ⁱ⁻¹ (1 - αⱼ)</span>
+<span class="comment">#   αᵢ = σᵢ · Ĝᵢ(pixel)</span>
+<span class="comment">#   其中 Ĝᵢ 是投影后的 2D 高斯</span>
+
+<span class="comment"># 3. Tile-based 排序</span>
+<span class="comment">#   屏幕分 16×16 tile</span>
+<span class="comment">#   每 tile 独立排序 (基数排序 O(n))</span>
+<span class="comment">#   实现高度 GPU 并行化</span></pre></div>
+    <div class="right">
+      <h4>可微分渲染的数学原理</h4>
+      <p><strong>投影：</strong>3D 协方差 \(\Sigma\) 投影为 2D 协方差 \(\hat{\Sigma} = J W \Sigma W^T J^T\)。\(J\) 是投影变换的仿射近似 Jacobian（在 3D 高斯中心处线性化）。</p>
+      <p><strong>α-Blending：</strong>按深度排序（近→远），每个 pixel 的最终颜色 = 所有覆盖该 pixel 的高斯颜色的加权和，权重 = α × 前面所有高斯的累积透射率。当透射率 T < ε 时早停。</p>
+      <p><strong>Tile-based 加速：</strong>屏幕分 16×16 tile，每个 tile 独立收集→排序→混合。这是 3DGS 能实时渲染的核心原因——高度并行 + 早停。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ SCENE ═══════════ -->
+<section id="scene">
+  <h2 class="section-title" id="s-scene">scene/__init__.py <span class="file">— Scene 管理类</span></h2>
+  <div class="split">
+    <div class="left"><pre><span class="kw">class</span> <span class="fn">Scene</span>:
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, args, gaussians, load_iteration=None,
+                 shuffle=True, resolution_scales=[<span class="num">1.0</span>]):
+        <span class="comment"># 1. 自动识别数据格式</span>
+        <span class="kw">if</span> exists(<span class="str">"sparse"</span>):
+            scene_info = <span class="fn">readColmapSceneInfo</span>(...)
+        <span class="kw">elif</span> exists(<span class="str">"transforms_train.json"</span>):
+            scene_info = <span class="fn">readNerfSyntheticInfo</span>(...)
+
+        <span class="comment"># 2. NERF 归一化半径 (用于 densification 阈值)</span>
+        self.cameras_extent = scene_info.nerf_normalization[<span class="str">"radius"</span>]
+
+        <span class="comment"># 3. CameraInfo → Camera 对象列表</span>
+        self.train_cameras = <span class="fn">cameraList_from_camInfos</span>(
+            scene_info.train_cameras, ...)
+        self.test_cameras = <span class="fn">cameraList_from_camInfos</span>(
+            scene_info.test_cameras, ...)
+
+        <span class="comment"># 4. 初始化高斯 (训练) 或加载 (推理)</span>
+        <span class="kw">if</span> load_iteration:
+            gaussians.<span class="fn">load_ply</span>(point_cloud_path)
+        <span class="kw">else</span>:
+            gaussians.<span class="fn">create_from_pcd</span>(
+                scene_info.point_cloud,
+                scene_info.train_cameras,
+                self.cameras_extent)</pre></div>
+    <div class="right">
+      <h4>Scene — 数据加载与组织中心</h4>
+      <ul>
+        <li><strong>数据源识别：</strong>自动检测 COLMAP (存在 sparse/) 或 Blender/NeRF 合成数据 (存在 transforms_train.json)</li>
+        <li><strong>NERF 归一化：</strong>计算所有训练相机包围球的半径 (radius) 和平移 (translate)，用于 densification 空间阈值和场景尺度适应</li>
+        <li><strong>相机管理：</strong>将 CameraInfo NamedTuple 转为 Camera 对象，按分辨率 scale 分组，支持 train/test split</li>
+        <li><strong>高斯初始化/加载：</strong>训练时从点云初始化，推理时从 .ply 加载</li>
+        <li><strong>save()</strong> — 保存高斯 .ply 和 exposure.json</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ CAMERAS ═══════════ -->
+<section id="cameras">
+  <h2 class="section-title" id="s-cameras">scene/cameras.py <span class="file">— 相机模型</span></h2>
+  <div class="split">
+    <div class="left"><pre><span class="kw">class</span> <span class="fn">Camera</span>(nn.Module):
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, resolution, colmap_id, R, T,
+                 FoVx, FoVy, depth_params, image,
+                 invdepthmap, image_name, uid,
+                 trans, scale, ...):
+        <span class="comment"># GT 图像 (resize + normalize)</span>
+        self.original_image = PILtoTorch(image, resolution)[:<span class="num">3</span>]
+        <span class="comment"># 深度图 (可选，用于深度正则化)</span>
+        <span class="kw">if</span> invdepthmap <span class="kw">is</span> <span class="kw">not</span> <span class="kw">None</span>:
+            self.invdepthmap = ...
+        <span class="comment"># World→View 变换矩阵 (4×4)</span>
+        self.world_view_transform = \
+            getWorld2View2(R, T, trans, scale)
+        <span class="comment"># 透视投影矩阵 (4×4)</span>
+        self.projection_matrix = \
+            getProjectionMatrix(znear, zfar, FoVx, FoVy)
+        <span class="comment"># World→NDC 复合变换</span>
+        self.full_proj_transform = \
+            world_view @ projection
+        <span class="comment"># 相机世界坐标中心 (SH 计算用)</span>
+        self.camera_center = \
+            world_view.inverse()[<span class="num">3</span>, :<span class="num">3</span>]
+
+<span class="kw">class</span> <span class="fn">MiniCam</span>:  <span class="comment"># 轻量版，用于 GUI 交互渲染</span></pre></div>
+    <div class="right">
+      <h4>Camera — 每个视角的完整信息</h4>
+      <ul>
+        <li>存储该视角的 <strong>GT 图像</strong>、<strong>相机内外参</strong>、<strong>FOV</strong></li>
+        <li>预计算 <code>world_view_transform</code> (世界→相机) 和 <code>full_proj_transform</code> (世界→NDC)</li>
+        <li><code>camera_center</code> — 用于 SH 评估（计算从高斯到相机的观察方向）</li>
+        <li>可选 <code>alpha_mask</code>（处理 R/GBA 图像）、<code>invdepthmap</code>（深度正则化）</li>
+        <li><code>MiniCam</code> — 轻量版，仅含渲染必需的变换矩阵，用于 SIBR_viewer 交互</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ DATASET READERS ═══════════ -->
+<section id="dataset">
+  <h2 class="section-title" id="s-dataset">scene/dataset_readers.py <span class="file">— 数据集读取</span></h2>
+  <div class="split">
+    <div class="left"><pre><span class="comment"># 核心数据结构</span>
+<span class="kw">class</span> <span class="fn">CameraInfo</span>(NamedTuple):
+    uid, R, T, FovY, FovX, depth_params,
+    image_path, image_name, depth_path,
+    width, height, is_test
+
+<span class="kw">class</span> <span class="fn">SceneInfo</span>(NamedTuple):
+    point_cloud, train_cameras, test_cameras,
+    nerf_normalization, ply_path, is_nerf_synthetic
+
+<span class="comment"># ── 读取 COLMAP 场景 ──</span>
+<span class="kw">def</span> <span class="fn">readColmapSceneInfo</span>(path, images, depths, eval, ...):
+    <span class="comment"># 读 binary/text extrinsic + intrinsic</span>
+    cam_extrinsics = read_extrinsics_binary/text(...)
+    cam_intrinsics = read_intrinsics_binary/text(...)
+
+    <span class="comment"># CameraInfo 列表 + train/test 划分</span>
+    cam_infos = readColmapCameras(...)
+    train = [c for c in cam_infos if not c.is_test]
+    test  = [c for c in cam_infos if c.is_test]
+
+    <span class="comment"># NERF 归一化参数</span>
+    nerf_norm = getNerfppNorm(train)
+
+    <span class="comment"># 读取或创建 .ply 点云</span>
+    pcd = fetchPly(ply_path)
+    <span class="kw">return</span> SceneInfo(pcd, train, test, nerf_norm, ...)
+
+<span class="command"># ── 读取 Blender/NeRF Synthetic 场景 ──</span>
+<span class="kw">def</span> <span class="fn">readNerfSyntheticInfo</span>(path, white_bg, depths, eval):
+    train = readCamerasFromTransforms(path, <span class="str">"transforms_train.json"</span>, ...)
+    test  = readCamerasFromTransforms(path, <span class="str">"transforms_test.json"</span>, ...)
+    <span class="comment"># 无COLMAP点云 → 随机生成 100k 点</span>
+    <span class="kw">if</span> no_ply: xyz = random(100k, 3) * <span class="num">2.6</span> - <span class="num">1.3</span>
+
+<span class="comment"># 场景类型注册表</span>
+sceneLoadTypeCallbacks = {
+    <span class="str">"Colmap"</span>: readColmapSceneInfo,
+    <span class="str">"Blender"</span>: readNerfSyntheticInfo
+}</pre></div>
+    <div class="right">
+      <h4>dataset_readers.py — 多格式数据解析</h4>
+      <p>支持两种数据格式，通过 <code>sceneLoadTypeCallbacks</code> 注册表自动选择：</p>
+      <ul>
+        <li><strong>COLMAP 格式：</strong>从 <code>sparse/0/</code> 读 bin 或 txt 格式的相机内外参和稀疏点云。支持 PINHOLE 和 SIMPLE_PINHOLE 相机模型。可加载深度信息用于深度正则化。</li>
+        <li><strong>NeRF Blender 格式：</strong>从 <code>transforms_train.json</code>/<code>transforms_test.json</code> 读取。camera-to-world 矩阵 → COLMAP 坐标系（Y轴Z轴翻转）。无 COLMAP 点云时在 [-1.3, 1.3] 范围内随机 100k 点。</li>
+      </ul>
+      <p><strong>关键函数：</strong></p>
+      <ul>
+        <li><code>getNerfppNorm()</code> — 计算所有相机包围球的中心和半径，用于场景归一化</li>
+        <li><code>fetchPly()/storePly()</code> — PLY 点云读写</li>
+        <li><code>readColmapCameras()</code> — COLMAP raw 数据 → 统一的 CameraInfo NamedTuple</li>
+        <li>train/test 划分：支持按 llffhold 规则（每N帧取1为test）或读取 sparse/0/test.txt</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ SH UTILS ═══════════ -->
+<section id="utils">
+  <h2 class="section-title">utils/ <span class="file">— 工具函数集</span></h2>
+
+  <div id="s-sh" style="margin-bottom:24px;">
+    <h3 style="color:#fff;">utils/sh_utils.py <span class="file">— 球谐函数 (Spherical Harmonics)</span></h3>
+    <div class="split">
+      <div class="left"><pre><span class="comment"># SH 归一化常数 (C0~C4)</span>
+C0 = <span class="num">0.28209479177387814</span>
+C1 = <span class="num">0.4886025119029199</span>
+C2 = [<span class="num">1.0925484</span>, -<span class="num">1.0925484</span>, <span class="num">0.31539156</span>, -<span class="num">1.0925484</span>, <span class="num">0.5462742</span>]
+<span class="kw">...</span>
+
+<span class="kw">def</span> <span class="fn">eval_sh</span>(deg, sh, dirs):
+    <span class="string">"""在单位方向 dirs 上评估 SH 基函数
+    sh:  系数 [..., C, (deg+1)²]
+    dirs: 单位方向 [..., 3]
+    返回: RGB 颜色 [..., C]
+    支持 deg 0~4
+    """</span>
+    result = C0 * sh[..., <span class="num">0</span>]
+    <span class="kw">if</span> deg > <span class="num">0</span>:
+        x, y, z = dirs[..., <span class="num">0</span>], dirs[..., <span class="num">1</span>], dirs[..., <span class="num">2</span>]
+        result = (result
+            - C1*y * sh[..., <span class="num">1</span>]
+            + C1*z * sh[..., <span class="num">2</span>]
+            - C1*x * sh[..., <span class="num">3</span>])
+        <span class="kw">if</span> deg > <span class="num">1</span>:
+            xx, yy, zz = x*x, y*y, z*z
+            xy, yz, xz = x*y, y*z, x*z
+            result = (result
+                + C2[<span class="num">0</span>]*xy * sh[..., <span class="num">4</span>]
+                + C2[<span class="num">1</span>]*yz * sh[..., <span class="num">5</span>]
+                + C2[<span class="num">2</span>]*(<span class="num">2</span>*zz-xx-yy) * sh[..., <span class="num">6</span>]
+                + C2[<span class="num">3</span>]*xz * sh[..., <span class="num">7</span>]
+                + C2[<span class="num">4</span>]*(xx-yy) * sh[..., <span class="num">8</span>])
+        <span class="kw">if</span> deg > <span class="num">2</span>:
+            <span class="kw">...</span>  <span class="comment"># deg=3,4 更高阶项</span>
+    <span class="kw">return</span> result
+
+<span class="kw">def</span> <span class="fn">RGB2SH</span>(rgb):
+    <span class="kw">return</span> (rgb - <span class="num">0.5</span>) / C0   <span class="comment"># RGB[0,1] → SH DC</span></pre></div>
+      <div class="right">
+        <h4>球谐函数 — 视角相关颜色编码</h4>
+        <p>SH 是球面上的正交基函数。3DGS 用它们表示每个高斯在不同观察方向上的颜色：</p>
+        <p class="math">\[\text{color}(\mathbf{d}) = \sum_{i=0}^{15} \text{SH}_i(\mathbf{d}) \cdot \mathbf{c}_i\]</p>
+        <p>每个高斯存储 SH 系数 \(c_i\)（不是直接颜色值）。渲染时根据观察方向 \(\mathbf{d}\)（高斯→相机）评估 SH 基函数，加权求和得 RGB。</p>
+        <p><code>RGB2SH()</code> 将 [0,1] RGB 转为 SH 0阶 (DC) 系数，用于从点云颜色初始化。</p>
+        <p>3DGS 支持到 4 阶 (deg=3)，即 16 系数 × 3 通道 = 每个高斯 48 维额外颜色参数（加上 DC 的 3 维共 51 维颜色）。</p>
+        <p>实现来自 PlenOctrees 项目，用硬编码的 SH 多项式系数，比动态计算快得多。</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="s-loss" style="margin-bottom:24px;">
+    <h3 style="color:#fff;">utils/loss_utils.py <span class="file">— 损失函数</span></h3>
+    <div class="split">
+      <div class="left"><pre><span class="kw">def</span> <span class="fn">l1_loss</span>(network_output, gt):
+    <span class="kw">return</span> torch.abs(network_output - gt).mean()
+
+<span class="kw">def</span> <span class="fn">ssim</span>(img1, img2, window_size=<span class="num">11</span>, size_average=<span class="kw">True</span>):
+    channel = img1.size(-<span class="num">3</span>)
+    window = <span class="fn">create_window</span>(window_size, channel)  <span class="comment"># 11×11高斯核</span>
+
+    <span class="comment"># 滑动窗口计算统计量</span>
+    mu1 = F.conv2d(img1, window, padding=window_size//<span class="num">2</span>, groups=channel)
+    mu2 = F.conv2d(img2, window, padding=window_size//<span class="num">2</span>, groups=channel)
+    sigma1_sq = F.conv2d(img1*img1, window, ...) - mu1.pow(<span class="num">2</span>)
+    sigma2_sq = F.conv2d(img2*img2, window, ...) - mu2.pow(<span class="num">2</span>)
+    sigma12   = F.conv2d(img1*img2, window, ...) - mu1*mu2
+
+    C1, C2 = <span class="num">0.01</span>**<span class="num">2</span>, <span class="num">0.03</span>**<span class="num">2</span>
+    ssim_map = ((<span class="num">2</span>*mu1*mu2 + C1) * (<span class="num">2</span>*sigma12 + C2)) / \
+              ((mu1**<span class="num">2</span>+mu2**<span class="num">2</span>+C1) * (sigma1_sq+sigma2_sq+C2))
+    <span class="kw">return</span> ssim_map.mean()
+
+<span class="kw">def</span> <span class="fn">fast_ssim</span>(img1, img2):
+    <span class="kw">return</span> FusedSSIMMap.<span class="fn">apply</span>(C1, C2, img1, img2).mean()
+    <span class="comment">#   CUDA 融合 forward+backward</span></pre></div>
+      <div class="right">
+        <h4>Loss = L1 + λ·(1-SSIM)</h4>
+        <ul>
+          <li><strong>L1 Loss</strong> — 逐像素绝对误差，比 L2 更鲁棒，保留高频细节</li>
+          <li><strong>SSIM</strong> — 结构相似性指标，由亮度/对比度/结构三个分量组成。11×11 高斯滑动窗口。值域 [0,1]，1=完全相同</li>
+          <li><strong>组合公式</strong>：<code>loss = (1-λ)·L1 + λ·(1-SSIM)</code>，λ=0.2（默认）</li>
+          <li><strong>fast_ssim (FusedSSIMMap)</strong> — 自定义 PyTorch autograd Function：forward 调用 CUDA kernel，backward 也有对应 CUDA kernel，避免 Python 端多次 GPU→CPU 传输</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div id="s-general" style="margin-bottom:24px;">
+    <h3 style="color:#fff;">utils/general_utils.py <span class="file">— 通用数学工具</span></h3>
+    <div class="split">
+      <div class="left"><pre><span class="comment"># 逆 sigmoid: [0,1] → (-∞,+∞) logit 空间</span>
+<span class="kw">def</span> <span class="fn">inverse_sigmoid</span>(x):
+    <span class="kw">return</span> torch.log(x / (<span class="num">1</span> - x))
+
+<span class="comment"># 指数衰减 LR (来自 Plenoxels)</span>
+<span class="kw">def</span> <span class="fn">get_expon_lr_func</span>(lr_init, lr_final,
+        lr_delay_steps=<span class="num">0</span>, lr_delay_mult=<span class="num">1.0</span>, max_steps=<span class="num">1e6</span>):
+    <span class="kw">def</span> <span class="fn">helper</span>(step):
+        <span class="kw">if</span> lr_delay_steps > <span class="num">0</span>:
+            delay = lr_delay_mult + (<span class="num">1</span>-lr_delay_mult) * \
+                    sin(π/<span class="num">2</span> * step/lr_delay_steps)
+        <span class="kw">else</span>: delay = <span class="num">1.0</span>
+        t = step / max_steps
+        log_lerp = exp(log(lr_init)*(<span class="num">1</span>-t) + log(lr_final)*t)
+        <span class="kw">return</span> delay * log_lerp
+    <span class="kw">return</span> helper
+
+<span class="comment"># 四元数 → 3×3 旋转矩阵</span>
+<span class="kw">def</span> <span class="fn">build_rotation</span>(r):  <span class="comment"># r: (N,4) 四元数</span>
+    R = torch.zeros((N, <span class="num">3</span>, <span class="num">3</span>))
+    R[:,<span class="num">0</span>,<span class="num">0</span>] = <span class="num">1</span> - <span class="num">2</span>*(y*y + z*z)
+    R[:,<span class="num">0</span>,<span class="num">1</span>] = <span class="num">2</span>*(x*y - r*z)
+    <span class="kw">...</span>  <span class="comment"># 标准公式 (9个元素)</span>
+    <span class="kw">return</span> R
+
+<span class="comment"># L = R·diag(s)  (构建 scaling-rotation)</span>
+<span class="kw">def</span> <span class="fn">build_scaling_rotation</span>(s, r):
+    L = zeros(N, <span class="num">3</span>, <span class="num">3</span>)
+    L[:,<span class="num">0</span>,<span class="num">0</span>] = s[:,<span class="num">0</span>]
+    L[:,<span class="num">1</span>,<span class="num">1</span>] = s[:,<span class="num">1</span>]
+    L[:,<span class="num">2</span>,<span class="num">2</span>] = s[:,<span class="num">2</span>]
+    <span class="kw">return</span> R @ L
+
+<span class="comment"># 对称矩阵上三角 → 6 分量</span>
+<span class="kw">def</span> <span class="fn">strip_symmetric</span>(sym):
+    <span class="kw">return</span> [L00, L01, L02, L11, L12, L22]</pre></div>
+      <div class="right">
+        <h4>general_utils.py — 关键数学工具</h4>
+        <ul>
+          <li><strong>inverse_sigmoid</strong> — 不透明度从 [0,1] 映射到 (-∞,+∞) logit 空间，支持无约束优化</li>
+          <li><strong>get_expon_lr_func</strong> — 对数-线性插值 LR 衰减 + 可选 warm-up delay（reverse cosine）。xyz 位置 LR 从高到低指数衰减</li>
+          <li><strong>build_rotation</strong> — 四元数→旋转矩阵的标准代数转换（9 元素全有显式表达式）</li>
+          <li><strong>build_scaling_rotation</strong> — 构建 \(L = R \cdot S\)，用于 \(\Sigma = LL^T = RSS^TR^T\)</li>
+          <li><strong>strip_symmetric</strong> — 协方差矩阵对称 3×3，只需存 6 个独立分量</li>
+          <li><strong>safe_state</strong> — 设置随机种子 (RNG) 保证可复现性</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div id="s-graphics" style="margin-bottom:24px;">
+    <h3 style="color:#fff;">utils/graphics_utils.py <span class="file">— 图形学变换</span></h3>
+    <div class="split">
+      <div class="left"><pre><span class="kw">class</span> <span class="fn">BasicPointCloud</span>(NamedTuple):
+    points, colors, normals
+
+<span class="comment"># World→Camera 变换 (支持 NERF 归一化)</span>
+<span class="kw">def</span> <span class="fn">getWorld2View2</span>(R, T, translate, scale):
+    Rt = [[Rᵀ, T], [<span class="num">0</span>, <span class="num">1</span>]]
+    C2W = inv(Rt)
+    cam_center = (C2W[:<span class="num">3</span>,<span class="num">3</span>] + translate) * scale
+    C2W[:<span class="num">3</span>,<span class="num">3</span>] = cam_center
+    <span class="kw">return</span> inv(C2W)
+
+<span class="comment"># OpenGL 风格透视投影矩阵</span>
+<span class="kw">def</span> <span class="fn">getProjectionMatrix</span>(znear, zfar, fovX, fovY):
+    P = zeros(<span class="num">4</span>,<span class="num">4</span>)
+    P[<span class="num">0</span>,<span class="num">0</span>] = <span class="num">2</span>*znear / (right-left)
+    P[<span class="num">1</span>,<span class="num">1</span>] = <span class="num">2</span>*znear / (top-bottom)
+    P[<span class="num">2</span>,<span class="num">2</span>] = zfar/(zfar-znear)
+    P[<span class="num">2</span>,<span class="num">3</span>] = -zfar*znear/(zfar-znear)
+    P[<span class="num">3</span>,<span class="num">2</span>] = <span class="num">1</span>
+    <span class="kw">return</span> P
+
+<span class="comment"># FoV ↔ 焦距 互转</span>
+<span class="kw">def</span> <span class="fn">fov2focal</span>(fov, pixels):
+    <span class="kw">return</span> pixels / (<span class="num">2</span>*tan(fov/<span class="num">2</span>))
+<span class="kw">def</span> <span class="fn">focal2fov</span>(focal, pixels):
+    <span class="kw">return</span> <span class="num">2</span>*atan(pixels/(<span class="num">2</span>*focal))</pre></div>
+      <div class="right">
+        <h4>graphics_utils.py — 图形变换</h4>
+        <ul>
+          <li><strong>BasicPointCloud</strong> — 点云数据结构 (N×3 each)</li>
+          <li><strong>getWorld2View2</strong> — 世界→相机变换矩阵，支持 NERF 归一化（translate+scale 调整场景到单位球）</li>
+          <li><strong>getProjectionMatrix</strong> — OpenGL 风格透视投影，视锥体→ [-1,1]³ NDC</li>
+          <li><strong>fov2focal / focal2fov</strong> — 视场角与焦距互转，用于 COLMAP 相机参数</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div id="s-image" style="margin-bottom:24px;">
+    <h3 style="color:#fff;">utils/image_utils.py <span class="file">— PSNR 计算</span></h3>
+    <div class="split">
+      <div class="left"><pre><span class="kw">def</span> <span class="fn">psnr</span>(img1, img2):
+    mse = ((img1 - img2) ** <span class="num">2</span>).view(
+        img1.shape[<span class="num">0</span>], -<span class="num">1</span>).mean(<span class="num">1</span>, keepdim=<span class="kw">True</span>)
+    <span class="kw">return</span> <span class="num">20</span> * torch.log10(<span class="num">1.0</span> / torch.sqrt(mse))
+    <span class="comment">#   PSNR = 20·log₁₀(MAX/√MSE), MAX=1.0</span></pre></div>
+      <div class="right"><p>PSNR > 30dB 通常认为质量好。值越高越好。</p></div>
+    </div>
+  </div>
+
+  <div id="s-camera-util" style="margin-bottom:24px;">
+    <h3 style="color:#fff;">utils/camera_utils.py <span class="file">— 相机加载</span></h3>
+    <div class="split">
+      <div class="left"><pre><span class="kw">def</span> <span class="fn">loadCam</span>(args, id, cam_info, resolution_scale,
+              is_nerf_synthetic, is_test_dataset):
+    image = Image.open(cam_info.image_path)
+    <span class="comment"># 可选加载深度图</span>
+    invdepthmap = cv2.imread(depth_path) / <span class="num">65536</span>
+    <span class="comment"># 计算分辨率 (支持多尺度)</span>
+    resolution = orig_w/scale, orig_h/scale
+    <span class="kw">return</span> Camera(resolution, R, T, FoVx, FoVy, ...)
+
+<span class="kw">def</span> <span class="fn">cameraList_from_camInfos</span>(cam_infos, resolution_scale,
+                              args, is_nerf_synthetic,
+                              is_test_dataset):
+    <span class="kw">return</span> [loadCam(args, id, c, resolution_scale,
+        is_nerf_synthetic, is_test_dataset)
+        <span class="kw">for</span> id, c <span class="kw">in</span> enumerate(cam_infos)]</pre></div>
+      <div class="right"><p>将 CameraInfo NamedTuple 转为 Camera nn.Module 对象。处理图像加载（PIL→Tensor）、深度图读取、分辨率缩放。</p></div>
+    </div>
+  </div>
+
+  <div id="s-depth" style="margin-bottom:24px;">
+    <h3 style="color:#fff;">utils/make_depth_scale.py <span class="file">— 深度尺度对齐</span></h3>
+    <div class="split">
+      <div class="left"><pre><span class="comment"># 计算单目深度 → COLMAP 深度的 scale/offset</span>
+<span class="kw">def</span> <span class="fn">get_scales</span>(key, cameras, images, points3d_ordered, args):
+    <span class="comment"># 1. 取 COLMAP 3D 点深度 = 1/z (相机坐标系)</span>
+    invcolmapdepth = <span class="num">1.0</span> / pts_in_cam[..., <span class="num">2</span>]
+    <span class="comment"># 2. 读单目深度估计图</span>
+    invmonodepthmap = cv2.imread(depth_file) / <span class="num">65536</span>
+    <span class="comment"># 3. 计算 scale = s_colmap / s_mono</span>
+    <span class="comment">#    offset = t_colmap - t_mono * scale</span>
+    scale = s_colmap / s_mono
+    offset = t_colmap - t_mono * scale</pre></div>
+      <div class="right">
+        <h4>make_depth_scale.py — 深度先验对齐（辅助工具）</h4>
+        <p>用于训练前将单目深度估计（如 DPT）的逆深度图与 COLMAP 稀疏深度对齐。计算 scale 和 offset，使单目深度的统计分布（median, MAD）与 COLMAP 深度一致。输出 <code>depth_params.json</code>，供训练时使用。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ ARGUMENTS ═══════════ -->
+<section id="config">
+  <h2 class="section-title" id="s-args">arguments/__init__.py <span class="file">— 参数解析系统</span></h2>
+  <div class="split">
+    <div class="left"><pre><span class="kw">class</span> <span class="fn">ParamGroup</span>:
+    <span class="string">"""自动将类属性注册为 argparse 参数"""</span>
+    <span class="kw">def</span> <span class="fn">__init__</span>(self, parser, name, fill_none=<span class="kw">False</span>):
+        <span class="kw">for</span> key, value <span class="kw">in</span> vars(self).items():
+            <span class="comment"># _ 开头的属性获得短参数名: --source_path, -s</span>
+            shorthand = key.startswith(<span class="str">"_"</span>)
+            <span class="kw">if</span> shorthand: key = key[<span class="num">1</span>:]
+            group.add_argument(<span class="str">"--"</span> + key, ...)
+
+<span class="kw">class</span> <span class="fn">ModelParams</span>(ParamGroup):     <span class="comment"># 数据加载</span>
+    sh_degree = <span class="num">3</span>
+    _source_path = <span class="str">""</span>        <span class="comment"># -s</span>
+    _model_path = <span class="str">""</span>         <span class="comment"># -m</span>
+    _images = <span class="str">"images"</span>       <span class="comment"># -i</span>
+    _depths = <span class="str">""</span>            <span class="comment"># -d</span>
+    _resolution = -<span class="num">1</span>        <span class="comment"># -r</span>
+    _white_background = <span class="kw">False</span>
+    eval = <span class="kw">False</span>
+
+<span class="kw">class</span> <span class="fn">PipelineParams</span>(ParamGroup):   <span class="comment"># 渲染管线</span>
+    convert_SHs_python = <span class="kw">False</span>
+    compute_cov3D_python = <span class="kw">False</span>
+    debug = <span class="kw">False</span>
+    antialiasing = <span class="kw">False</span>
+
+<span class="kw">class</span> <span class="fn">OptimizationParams</span>(ParamGroup): <span class="comment"># 训练超参</span>
+    iterations = <span class="num">30_000</span>
+    position_lr_init = <span class="num">0.00016</span>
+    position_lr_final = <span class="num">0.0000016</span>
+    feature_lr = <span class="num">0.0025</span>
+    opacity_lr = <span class="num">0.025</span>
+    scaling_lr = <span class="num">0.005</span>
+    rotation_lr = <span class="num">0.001</span>
+    lambda_dssim = <span class="num">0.2</span>
+    densification_interval = <span class="num">100</span>
+    opacity_reset_interval = <span class="num">3000</span>
+    densify_from_iter = <span class="num">500</span>
+    densify_until_iter = <span class="num">15_000</span>
+    densify_grad_threshold = <span class="num">0.0002</span>
+    percent_dense = <span class="num">0.01</span>
+    random_background = <span class="kw">False</span>
+    optimizer_type = <span class="str">"default"</span></pre></div>
+    <div class="right">
+      <h4>参数系统 — 声明式元编程</h4>
+      <p><code>ParamGroup</code> 是一个精巧的设计：将 Python 类属性自动注册为 argparse 参数。属性名即 <code>--name</code> 参数名，<code>_</code>前缀的属性同时获得单字母短参数（如 <code>_source_path</code>→<code>-s</code>）。</p>
+      <p>推理时 <code>get_combined_args()</code> 合并命令行参数和训练时保存的 <code>cfg_args</code>，确保推理参数与训练一致。</p>
+      <p><strong>关键超参说明：</strong></p>
+      <ul>
+        <li><code>lambda_dssim=0.2</code> → loss = 0.8·L1 + 0.2·(1-SSIM)</li>
+        <li><code>densify_until_iter=15000</code> → 后15k步不发新高斯，纯调参数</li>
+        <li><code>percent_dense=0.01</code> → scale > 场景半径1%的高斯 split，否则 clone</li>
+        <li><code>densify_grad_threshold=0.0002</code> → view-space 梯度阈值</li>
+        <li><code>random_background=False</code> → 开启后每步用随机背景色训练（提升泛化）</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ NETWORK GUI ═══════════ -->
+<section id="network">
+  <h2 class="section-title" id="s-network">gaussian_renderer/network_gui.py <span class="file">— 交互式 GUI</span></h2>
+  <div class="split">
+    <div class="left"><pre><span class="comment"># TCP socket server, 与 SIBR_viewer 通信</span>
+listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+<span class="kw">def</span> <span class="fn">receive</span>():
+    message = read()  <span class="comment"># JSON 格式协议</span>
+    <span class="comment"># 从 viewer 接收相机参数</span>
+    width, height = message[<span class="str">"resolution_x"</span>], ...
+    world_view_transform = tensor(message[<span class="str">"view_matrix"</span>])
+    full_proj_transform = tensor(message[<span class="str">"view_projection_matrix"</span>])
+    custom_cam = <span class="fn">MiniCam</span>(width, height, fovy, fovx,
+        znear, zfar, world_view_transform, full_proj_transform)
+    <span class="kw">return</span> custom_cam, do_training, ...
+
+<span class="kw">def</span> <span class="fn">send</span>(message_bytes, verify):
+    <span class="kw">if</span> message_bytes <span class="kw">is</span> <span class="kw">not</span> <span class="kw">None</span>:
+        conn.<span class="fn">sendall</span>(message_bytes)  <span class="comment"># 发送渲染图像</span></pre></div>
+    <div class="right">
+      <h4>network_gui.py — 训练时实时查看</h4>
+      <p>训练时启动 TCP server（默认 127.0.0.1:6009）。SIBR_viewer（官方可视化器）可连接，发送相机参数请求渲染，接收渲染图像。每步训练前检查是否有 GUI 请求，有则渲染并发送。</p>
+      <p>支持暂停训练（<code>do_training=False</code>）只渲染当前视角，便于交互式查看训练中间结果。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ C++/CUDA ═══════════ -->
+<section id="cpp">
+  <h2 class="section-title" id="s-cpp">C++/CUDA 子模块 <span class="file">— 底层加速</span></h2>
+
+  <div class="callout">
+    <strong>Python 只是前端，真正的计算在 CUDA kernel 中完成。</strong> 三个子模块（submodules/）提供了核心性能关键操作。
+  </div>
+
+  <div class="func-cards">
+    <div class="func-card">
+      <div class="name"><span class="tag tag-render">光栅化</span> diff-gaussian-rasterization</div>
+      <div class="desc"><strong>核心可微分渲染器。</strong> forward: 投影+排序+光栅化+α-blend；backward: 梯度传播。包含 tile-based 排序、各向异性高斯评估等 CUDA kernel。<br>
+      关键类: <code>GaussianRasterizer</code>, <code>GaussianRasterizationSettings</code>, <code>SparseGaussianAdam</code></div>
+    </div>
+    <div class="func-card">
+      <div class="name"><span class="tag tag-util">KNN</span> simple-knn</div>
+      <div class="desc">CUDA K-近邻距离计算 <code>distCUDA2()</code>。从点云计算每个点到最近邻的距离，用于初始化高斯尺度。</div>
+    </div>
+    <div class="func-card">
+      <div class="name"><span class="tag tag-loss">SSIM</span> fused-ssim</div>
+      <div class="desc">融合的 CUDA SSIM：forward+backward 都在 GPU 上完成，提供 <code>fused_ssim()</code> 函数。</div>
+    </div>
+    <div class="func-card">
+      <div class="name"><span class="tag tag-util">优化器</span> SparseGaussianAdam</div>
+      <div class="desc">稀疏 Adam（在 rasterizer 中）：只更新 visible (radii>0) 的高斯，跳过被遮挡/视锥外的，显著加速训练。</div>
+    </div>
+  </div>
+
+  <div class="split">
+    <div class="left"><pre><span class="comment">// ── diff-gaussian-rasterization 内部 CUDA kernel: ──</span>
+
+<span class="comment">// 1. preprocess: 投影 3D → 2D
+//    Σ̂ = J W Σ Wᵀ Jᵀ
+//    提取 2D 均值 + 协方差逆
+//    视锥剔除</span>
+
+<span class="comment">// 2. duplicateWithKeys + sort:
+//    为每个 tile (16×16) 收集覆盖它的高斯
+//    基数排序按深度排序 (O(n))</span>
+
+<span class="comment">// 3. render (核心 α-blending):
+//    for each pixel in tile:
+//      T = 1.0  // 累积透射率
+//      for each gaussian in tile (depth sorted):
+//        weight = α * G_2D(pixel)
+//        color += weight * c * T
+//        T *= (1 - weight)
+//        if T < ε: break  // 早停</span>
+
+<span class="comment">// 4. backward: 梯度反向传播
+//    dL/dμ̂ → dL/dμ (3D位置)
+//    dL/dΣ̂ → dL/dS (scale) + dL/dR (rotation)
+//    dL/dcolor, dL/dα 等</span></pre></div>
+    <div class="right">
+      <h4>CUDA 光栅化 — 为什么这么快？</h4>
+
+      <p><strong>Tile-based 架构：</strong>屏幕分 16×16 tile，每个 tile block 由一个 CUDA thread block 处理。每个 tile 维护自己的高斯列表和深度排序，block 之间完全独立并行。</p>
+
+      <p><strong>基数排序 O(n)：</strong>用 32-bit 整数 key（深度 quantized）做基数排序，仅需 4 pass（每 8 bit 一次），比比较排序的 O(n log n) 快得多。</p>
+
+      <p><strong>早停 (Early Termination)：</strong>当累积透射率 T < ε 时停止遍历。在遮挡严重的区域，大部分高斯被前面的不透明高斯挡住，早停大幅减少计算。</p>
+
+      <p><strong>Forward/Backward 一体：</strong>forward 时同时缓存必要中间结果（如每个 pixel 的最后一个高斯索引），backward 直接复用，避免重复计算。</p>
+
+      <p><strong>SparseGaussianAdam：</strong>仅对 radii>0（实际参与渲染）的高斯执行 optimizer step。训练初期大量高斯不可见时加速显著。</p>
+
+      <p>PyTorch 绑定在 <code>submodules/diff-gaussian-rasterization/diff_gaussian_rasterization/__init__.py</code> 中，通过 <code>torch.utils.cpp_extension.load</code> 动态加载编译好的 CUDA 扩展。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ COLAMP LOADER ═══════════ -->
+<section id="colmap">
+  <h2 class="section-title" id="s-colmap">scene/colmap_loader.py <span class="file">— COLMAP 二进制/文本读取</span></h2>
+  <div class="split">
+    <div class="left"><pre><span class="comment"># COLMAP 数据结构定义</span>
+CameraModel = namedtuple(<span class="str">"CameraModel"</span>,
+    [<span class="str">"model_id"</span>, <span class="str">"model_name"</span>, <span class="str">"num_params"</span>])
+Camera = namedtuple(<span class="str">"Camera"</span>,
+    [<span class="str">"id"</span>, <span class="str">"model"</span>, <span class="str">"width"</span>, <span class="str">"height"</span>, <span class="str">"params"</span>])
+Image = namedtuple(<span class="str">"Image"</span>,
+    [<span class="str">"id"</span>, <span class="str">"qvec"</span>, <span class="str">"tvec"</span>, <span class="str">"camera_id"</span>,
+     <span class="str">"name"</span>, <span class="str">"xys"</span>, <span class="str">"point3D_ids"</span>])
+Point3D = namedtuple(<span class="str">"Point3D"</span>,
+    [<span class="str">"id"</span>, <span class="str">"xyz"</span>, <span class="str">"rgb"</span>, <span class="str">"error"</span>,
+     <span class="str">"image_ids"</span>, <span class="str">"point2D_idxs"</span>])
+
+<span class="comment"># ── 关键函数 ──</span>
+<span class="fn">qvec2rotmat</span>(qvec)           <span class="comment"># 四元数→旋转矩阵</span>
+<span class="fn">read_points3D_binary</span>(path)  <span class="comment"># 读稀疏点云 (binary)</span>
+<span class="fn">read_points3D_text</span>(path)    <span class="comment"># 读稀疏点云 (text)</span>
+<span class="fn">read_extrinsics_binary</span>(path) <span class="comment"># 读相机外参 (binary)</span>
+<span class="fn">read_extrinsics_text</span>(path)   <span class="comment"># 读相机外参 (text)</span>
+<span class="fn">read_intrinsics_binary</span>(path) <span class="comment"># 读相机内参 (binary)</span>
+<span class="fn">read_intrinsics_text</span>(path)   <span class="comment"># 读相机内参 (text)</span>
+
+<span class="comment"># 支持 10 种 COLMAP 相机模型</span>
+CAMERA_MODELS = {
+    SIMPLE_PINHOLE, PINHOLE, SIMPLE_RADIAL, RADIAL,
+    OPENCV, OPENCV_FISHEYE, FULL_OPENCV, FOV, ...
+}</pre></div>
+    <div class="right">
+      <h4>colmap_loader.py — COLMAP 数据底层 I/O</h4>
+      <p>基于 COLMAP 官方 Python 脚本 <code>read_write_model.py</code> 改编。负责直接解析 COLMAP SfM 输出的 binary (.bin) 和 text (.txt) 格式：</p>
+      <ul>
+        <li>支持 10 种 COLMAP 相机模型（但 3DGS 只用 undistorted 后的 PINHOLE/SIMPLE_PINHOLE）</li>
+        <li>binary 格式通过 <code>struct.unpack</code> 解析字节级数据</li>
+        <li>text 格式逐行解析</li>
+        <li>自动处理大端/小端字节序</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ FOOTER ═══════════ -->
+<footer style="text-align:center;padding:40px 0;color:var(--text-muted);font-size:13px;border-top:1px solid var(--border);margin-top:40px;">
+  <p>3D Gaussian Splatting Code Guide — Generated for learning purposes</p>
+  <p>Paper: Kerbl, Kopanas, Leimkühler, Drettakis. "3D Gaussian Splatting for Real-Time Radiance Field Rendering." SIGGRAPH 2023.</p>
+  <p>Code: <a href="https://github.com/graphdeco-inria/gaussian-splatting" style="color:var(--accent);">github.com/graphdeco-inria/gaussian-splatting</a></p>
+</footer>
+
+</div>
+</body>
+</html>

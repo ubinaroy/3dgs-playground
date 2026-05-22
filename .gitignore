@@ -1,8 +1,32 @@
+# Python
 *.pyc
-.vscode
-output
-build
-diff_rasterization/diff_rast.egg-info
-diff_rasterization/dist
-tensorboard_3d
-screenshots
+__pycache__/
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+
+# Training outputs
+output*/
+output/
+
+# Large data / models
+*.ply
+*.pth
+*.pkl
+*.splat
+*.zip
+*.tar.gz
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# Misc
+diffusion_flow_guide.html
+truck_gt.png
+truck_render.png
+tensorboard_3d/
+screenshots/

@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>3D Gaussian Splatting Pipeline 记录</title>
+<style>
+  body { font-family: -apple-system, 'Microsoft YaHei', sans-serif; line-height: 1.7; max-width: 960px; margin: 0 auto; padding: 20px; background: #f7f8fa; color: #333; }
+  h1 { color: #1a1a2e; border-bottom: 3px solid #4a90d9; padding-bottom: 10px; }
+  h2 { color: #2d3748; margin-top: 32px; border-left: 4px solid #4a90d9; padding-left: 12px; background: #edf2f7; padding: 8px 12px; border-radius: 0 4px 4px 0; }
+  h3 { color: #4a5568; margin-top: 24px; }
+  .meta { background: #ebf4ff; padding: 12px 16px; border-radius: 6px; margin: 16px 0; font-size: 14px; }
+  .meta strong { color: #2b6cb0; }
+  pre { background: #1e293b; color: #e2e8f0; padding: 16px; border-radius: 8px; overflow-x: auto; font-size: 13px; line-height: 1.5; tab-size: 2; }
+  code { background: #edf2f7; padding: 2px 6px; border-radius: 3px; font-size: 13px; }
+  pre code { background: none; padding: 0; }
+  .section { background: white; border-radius: 8px; padding: 4px 20px 16px; margin: 16px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; background: white; border-radius: 6px; overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+  th, td { padding: 8px 14px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+  th { background: #4a90d9; color: white; }
+  tr:hover { background: #f0f4ff; }
+  .tag { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: bold; margin-right: 4px; }
+  .tag-ok { background: #c6f6d5; color: #22543d; }
+  .tag-warn { background: #fefcbf; color: #744210; }
+  .tag-info { background: #bee3f8; color: #1a365d; }
+  .note { background: #fffaf0; border: 1px solid #fbd38d; border-radius: 6px; padding: 12px 16px; margin: 12px 0; }
+  .note strong { color: #c05621; }
+  .cmd-name { background: #2d3748; color: #68d391; padding: 2px 8px; border-radius: 3px; font-family: monospace; }
+  ul { padding-left: 20px; }
+  li { margin: 4px 0; }
+  ::-webkit-scrollbar { height: 8px; }
+  ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb { background: #888; border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<h1>🚛 3D Gaussian Splatting 完整 Pipeline 记录</h1>
+<div class="meta">
+  <strong>场景:</strong> Tanks &amp; Temples Truck &nbsp;|&nbsp;
+  <strong>日期:</strong> 2026-05-20 &nbsp;|&nbsp;
+  <strong>数据:</strong> 251 张真实卡车照片 &nbsp;|&nbsp;
+  <strong>训练 PSNR:</strong> 27.98 dB
+</div>
+
+<!-- ==================== 1 ==================== -->
+<div class="section">
+<h2>一、数据获取</h2>
+<p>从 <a href="https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/datasets/input/tandt_db.zip" target="_blank">3DGS 官方仓库</a> 下载 tandt_db.zip（682MB），只提取 Truck 原始照片，丢弃预计算的 COLMAP 结果。</p>
+<pre>
+<span style="color:#7dd3fc"># 下载</span>
+wget https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/datasets/input/tandt_db.zip
+
+<span style="color:#7dd3fc"># 提取 Truck 照片</span>
+mkdir -p truck_data/input
+unzip -q tandt_db.zip 'tandt/truck/images/*'
+mv tandt/truck/images/* truck_data/input/
+</pre>
+</div>
+
+<!-- ==================== 2 ==================== -->
+<div class="section">
+<h2>二、COLMAP SfM — 从照片到点云</h2>
+
+<h3>2.1 特征提取</h3>
+<p>每张图提取 3000-7000 个 SIFT 特征。耗时 ~1.6 分钟。</p>
+<pre>
+export QT_QPA_PLATFORM=offscreen
+mkdir -p truck_data/distorted/sparse
+
+colmap feature_extractor \
+    --database_path truck_data/distorted/database.db \
+    --image_path truck_data/input \
+    --ImageReader.single_camera 1 \
+    --ImageReader.camera_model OPENCV \
+    --SiftExtraction.use_gpu 0
+</pre>
+
+<div class="note">
+<strong>⚠️ 关键优化:</strong> 251 张图穷举匹配需数小时。因为是视频帧序列，改用 <code>sequential_matcher</code> 只匹配相邻帧，仅需 ~4.6 分钟。
+</div>
+
+<h3>2.2 顺序特征匹配</h3>
+<pre>
+colmap sequential_matcher \
+    --database_path truck_data/distorted/database.db \
+    --SiftMatching.use_gpu 0
+</pre>
+
+<h3>2.3 稀疏重建（Bundle Adjustment）</h3>
+<pre>
+colmap mapper \
+    --database_path truck_data/distorted/database.db \
+    --image_path truck_data/input \
+    --output_path truck_data/distorted/sparse \
+    --Mapper.ba_global_function_tolerance=0.000001
+</pre>
+<table>
+  <tr><td>注册图像</td><td>251 / 251</td></tr>
+  <tr><td>生成点云</td><td><strong>136,029 个</strong></td></tr>
+  <tr><td>重投影误差</td><td>0.34 px</td></tr>
+</table>
+
+<h3>2.4 畸变校正</h3>
+<pre>
+colmap image_undistorter \
+    --image_path truck_data/input \
+    --input_path truck_data/distorted/sparse/0 \
+    --output_path truck_data --output_type COLMAP
+
+<span style="color:#7dd3fc"># 修正目录结构（3DGS 要求 sparse/0/）</span>
+mkdir -p truck_data/sparse/0
+mv truck_data/sparse/*.bin truck_data/sparse/0/
+</pre>
+
+<p>最终数据集结构:</p>
+<pre>
+truck_data/
+├── input/            ← 251 张原始 JPG
+├── images/           ← 校正后的照片
+├── distorted/        ← COLMAP 临时文件
+└── sparse/0/
+    ├── cameras.bin   ← 相机内参
+    ├── images.bin    ← 每张图的位姿
+    └── points3D.bin  ← SfM 点云 (136K 个点)
+</pre>
+</div>
+
+<!-- ==================== 3 ==================== -->
+<div class="section">
+<h2>三、3DGS 训练</h2>
+<pre>
+python train.py -s /path/to/truck_data -m output/truck --disable_viewer
+</pre>
+
+<table>
+  <tr><th>参数</th><th>值</th><th>说明</th></tr>
+  <tr><td><code>-s</code></td><td>truck_data</td><td>数据集路径</td></tr>
+  <tr><td><code>-m</code></td><td>output/truck</td><td>模型输出路径</td></tr>
+  <tr><td><code>--disable_viewer</code></td><td>-</td><td>禁用 GUI 网络查看器</td></tr>
+  <tr><td><code>--eval</code></td><td>不传</td><td>全部 251 张用于训练</td></tr>
+</table>
+
+<h3>训练过程</h3>
+<ol>
+  <li>从 SfM 点云初始化 <strong>136,029</strong> 个 3D 高斯</li>
+  <li>每步随机挑 1 张训练图 → 可微渲染 → L1 + SSIM 损失</li>
+  <li>反向传播更新 <strong>7 组参数</strong>：位置、SH DC、SH 高阶、缩放、旋转、不透明度、曝光</li>
+  <li>迭代 500–15,000: <strong>自适应密度控制</strong>（克隆大梯度高斯、分裂大尺度高斯、剪枝近透明高斯）</li>
+  <li>每 3,000 步: 重置不透明度</li>
+  <li>每 1,000 步: 提升 SH 阶数（0 → 1 → 2 → 3）</li>
+</ol>
+
+<h3>训练结果</h3>
+<table>
+  <tr><th>迭代</th><th>L1 损失</th><th>PSNR</th><th>SSIM</th><th>LPIPS</th></tr>
+  <tr><td>7,000</td><td>0.033</td><td>24.88</td><td>-</td><td>-</td></tr>
+  <tr><td><strong>30,000</strong></td><td><strong>0.022</strong></td><td><strong>27.98</strong></td><td><strong>0.9167</strong></td><td><strong>0.1137</strong></td></tr>
+  <tr><td colspan="5" style="background:#f7fafc; font-size:13px;">训练时间: ~18 分钟 | GPU: vGPU-32GB</td></tr>
+</table>
+
+<p>输出模型: <code>output/truck/point_cloud/iteration_30000/point_cloud.ply</code>（491MB）</p>
+</div>
+
+<!-- ==================== 4 ==================== -->
+<div class="section">
+<h2>四、渲染</h2>
+<pre>
+python render.py -m output/truck --skip_test
+</pre>
+<ul>
+  <li>遍历 <strong>251 个训练视角</strong>，每个用完整 tile-based CUDA rasterizer 渲染</li>
+  <li>使用 SH 全阶颜色（含视角依赖的高光效果）</li>
+  <li>输出: <code>train/ours_30000/renders/*.png</code> + <code>gt/*.png</code></li>
+  <li>耗时: ~2 分钟</li>
+</ul>
+</div>
+
+<!-- ==================== 5 ==================== -->
+<div class="section">
+<h2>五、Web 实时查看器</h2>
+<p>使用 <strong>gsplat.js</strong> 在浏览器中实时渲染 3DGS 模型。</p>
+
+<h3>5.1 格式转换</h3>
+<pre>
+<span style="color:#7dd3fc"># 安装 antimatter15/splat 并转换</span>
+cd splat
+python convert.py truck.ply -o truck.splat
+<span style="color:#7dd3fc"># 491MB → 64MB（只保留 DC 颜色，适合 Web 传输）</span>
+</pre>
+
+<h3>5.2 启动服务</h3>
+<pre>
+cd gsplat-viewer/
+python -m http.server 8080
+</pre>
+
+<h3>5.3 SSH 端口转发 + 浏览器访问</h3>
+<p>在本地新开终端窗口:</p>
+<pre>
+<span style="color:#7dd3fc"># 新开一个 PowerShell 窗口，不要关</span>
+ssh -L 8080:localhost:8080 -p 18544 root@connect.westb.seetacloud.com
+</pre>
+<p>浏览器打开: <a href="http://localhost:8080" target="_blank">http://localhost:8080</a></p>
+</div>
+
+<!-- ==================== 6 ==================== -->
+<div class="section">
+<h2>六、完整命令速查</h2>
+<pre>
+<span style="color:#7dd3fc;font-weight:bold"># 1. 下载数据</span>
+wget https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/datasets/input/tandt_db.zip
+mkdir -p truck_data/input
+unzip -q tandt_db.zip 'tandt/truck/images/*'
+mv tandt/truck/images/* truck_data/input/
+
+<span style="color:#7dd3fc;font-weight:bold"># 2. COLMAP SfM</span>
+export QT_QPA_PLATFORM=offscreen
+mkdir -p truck_data/distorted/sparse
+
+colmap feature_extractor --database_path truck_data/distorted/database.db --image_path truck_data/input --ImageReader.single_camera 1 --ImageReader.camera_model OPENCV --SiftExtraction.use_gpu 0
+
+colmap sequential_matcher --database_path truck_data/distorted/database.db --SiftMatching.use_gpu 0
+
+colmap mapper --database_path truck_data/distorted/database.db --image_path truck_data/input --output_path truck_data/distorted/sparse --Mapper.ba_global_function_tolerance=0.000001
+
+colmap image_undistorter --image_path truck_data/input --input_path truck_data/distorted/sparse/0 --output_path truck_data --output_type COLMAP
+mkdir -p truck_data/sparse/0 && mv truck_data/sparse/*.bin truck_data/sparse/0/
+
+<span style="color:#7dd3fc;font-weight:bold"># 3. 训练</span>
+cd gaussian-splatting
+python train.py -s /path/to/truck_data -m output/truck --disable_viewer
+
+<span style="color:#7dd3fc;font-weight:bold"># 4. 渲染</span>
+python render.py -m output/truck
+
+<span style="color:#7dd3fc;font-weight:bold"># 5. Web 查看器</span>
+cd splat
+python convert.py /path/to/point_cloud.ply -o model.splat
+cd gsplat-viewer/
+python -m http.server 8080
+<span style="color:#7dd3fc"># 本地开新终端: ssh -L 8080:localhost:8080 -p 18544 root@host</span>
+<span style="color:#7dd3fc"># 浏览器: http://localhost:8080</span>
+</pre>
+</div>
+
+<!-- ==================== 7 ==================== -->
+<div class="section">
+<h2>七、文件索引</h2>
+<table>
+  <tr><th>内容</th><th>服务器路径</th></tr>
+  <tr><td>原始照片</td><td><code>/root/autodl-tmp/truck_data/input/</code></td></tr>
+  <tr><td>COLMAP 结果</td><td><code>/root/autodl-tmp/truck_data/sparse/0/</code></td></tr>
+  <tr><td>训练模型</td><td><code>/root/gaussian-splatting/output/truck/</code></td></tr>
+  <tr><td>渲染结果</td><td><code>/root/gaussian-splatting/output/truck/train/ours_30000/</code></td></tr>
+  <tr><td>Web 查看器</td><td><code>/root/autodl-tmp/gsplat-viewer/</code></td></tr>
+  <tr><td>Web 模型</td><td><code>/root/autodl-tmp/gsplat-viewer/truck.splat</code></td></tr>
+</table>
+
+<table>
+  <tr><th>文件</th><th>路径</th><th>说明</th></tr>
+  <tr><td>Markdown 文档</td><td><code>D:\CCBench\3dgs_pipeline.md</code></td><td>供 AI 查看</td></tr>
+  <tr><td>HTML 文档</td><td><code>D:\CCBench\3dgs_pipeline.html</code></td><td>供人类查看</td></tr>
+  <tr><td>渲染结果</td><td><code>D:\CCBench\truck_render.png</code></td><td>3DGS 渲染的卡车</td></tr>
+  <tr><td>真值照片</td><td><code>D:\CCBench\truck_gt.png</code></td><td>对应的 GT</td></tr>
+</table>
+</div>
+
+<div class="meta" style="text-align:center; margin-top:32px;">
+  Generated by OpenCode on 2026-05-20 &nbsp;|&nbsp;
+  <a href="https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/">3DGS Paper</a> &nbsp;|&nbsp;
+  <a href="https://www.tanksandtemples.org/">Tanks &amp; Temples</a>
+</div>
+
+</body>
+</html>
